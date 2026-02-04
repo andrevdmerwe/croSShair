@@ -97,6 +97,9 @@
             canvas.style.width = `${width}px`; // Display size
             canvas.style.height = `${height}px`;
         });
+
+        renderBase();
+        renderOverlay();
     }
 
     function renderBase() {
