@@ -1,7 +1,7 @@
 {
-  "name": "tauri-app",
+  "name": "crosshair",
   "version": "0.1.0",
-  "description": "",
+  "description": "Lightweight screenshot and annotation tool for CachyOS Linux with Niri Wayland compositor",
   "type": "module",
   "scripts": {
     "dev": "vite dev",

@@ -1,0 +1,43 @@
+export interface Annotation {
+    id: string;
+    type: AnnotationType;
+    x: number;
+    y: number;
+    width?: number;
+    height?: number;
+    color: string;
+    strokeWidth: number;
+    data?: any; // For text content, points array, etc.
+}
+
+export type AnnotationType =
+    | 'pen'
+    | 'highlighter'
+    | 'rectangle'
+    | 'ellipse'
+    | 'line'
+    | 'arrow'
+    | 'text'
+    | 'step'
+    | 'pixelate'
+    | 'crop';
+
+export interface TabData {
+    id: string;
+    label: string;
+    imagePath: string;
+    originalImagePath: string;
+    annotations: Annotation[];
+    isDirty: boolean;
+    timestamp: number;
+    stepCounter: number;
+}
+
+export type Tool = AnnotationType | 'select';
+
+export interface AppConfig {
+    screenshotDirectory: string;
+    copyAfterCapture: boolean;
+    defaultColor: string;
+    defaultStrokeWidth: 'Thin' | 'Medium' | 'Thick';
+}

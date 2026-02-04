@@ -1,49 +1,49 @@
 ## 1. Project Setup
 
-- [ ] 1.1 Initialize Tauri project with Svelte frontend using `npm create tauri-app`
-- [ ] 1.2 Configure Tauri for single-instance behavior using `tauri-plugin-single-instance`
-- [ ] 1.3 Set up project structure (src-tauri for Rust, src for Svelte frontend)
-- [ ] 1.4 Add necessary dependencies to Cargo.toml (serde, directories, chrono)
-- [ ] 1.5 Configure Tauri for Wayland/WebKitGTK with GPU acceleration
+- [x] 1.1 Initialize Tauri project with Svelte frontend using `npm create tauri-app`
+- [x] 1.2 Configure Tauri for single-instance behavior using `tauri-plugin-single-instance`
+- [x] 1.3 Set up project structure (src-tauri for Rust, src for Svelte frontend)
+- [x] 1.4 Add necessary dependencies to Cargo.toml (serde, directories, chrono)
+- [x] 1.5 Configure Tauri for Wayland/WebKitGTK with GPU acceleration
 
 ## 2. Configuration Subsystem
 
-- [ ] 2.1 Implement XDG-compliant config path resolution in Rust backend
-- [ ] 2.2 Create config.json schema with screenshotDirectory, copyAfterCapture, defaultColors, defaultStrokeWidth
-- [ ] 2.3 Implement config load/save Tauri commands
-- [ ] 2.4 Create default config initialization with ~/Pictures/Screenshots default directory
+- [x] 2.1 Implement XDG-compliant config path resolution in Rust backend
+- [x] 2.2 Create config.json schema with screenshotDirectory, copyAfterCapture, defaultColors, defaultStrokeWidth
+- [x] 2.3 Implement config load/save Tauri commands
+- [x] 2.4 Create default config initialization with ~/Pictures/Screenshots default directory
 
 ## 3. CLI Tool Integration
 
-- [ ] 3.1 Implement Rust function to check PATH for grim, slurp, wl-copy
-- [ ] 3.2 Create dependency status Tauri command for frontend
-- [ ] 3.3 Implement slurp invocation to get region geometry
-- [ ] 3.4 Implement grim invocation with geometry parameter and output path
-- [ ] 3.5 Implement wl-copy piping for clipboard integration
-- [ ] 3.6 Add timestamp-based filename generation (YYYYMMDD_HHMMSS.png)
+- [x] 3.1 Implement Rust function to check PATH for grim, slurp, wl-copy
+- [x] 3.2 Create dependency status Tauri command for frontend
+- [x] 3.3 Implement slurp invocation to get region geometry
+- [x] 3.4 Implement grim invocation with geometry parameter and output path
+- [x] 3.5 Implement wl-copy piping for clipboard integration
+- [x] 3.6 Add timestamp-based filename generation (YYYYMMDD_HHMMSS.png)
 
 ## 4. CLI Entry Point
 
-- [ ] 4.1 Add CLI argument parsing for `capture-region` subcommand
-- [ ] 4.2 Implement single-instance IPC to send capture command to running instance
-- [ ] 4.3 Handle app startup when no instance is running
-- [ ] 4.4 Create Tauri event for new screenshot from CLI
+- [x] 4.1 Add CLI argument parsing for `capture-region` subcommand
+- [x] 4.2 Implement single-instance IPC to send capture command to running instance
+- [x] 4.3 Handle app startup when no instance is running
+- [x] 4.4 Create Tauri event for new screenshot from CLI
 
 ## 5. Frontend Shell
 
-- [ ] 5.1 Create main App.svelte layout with tab bar, toolbar, and canvas area
-- [ ] 5.2 Implement Tab store with add/remove/select functionality
-- [ ] 5.3 Create TabBar component with label, close button, active highlighting
-- [ ] 5.4 Implement empty state view with "No screenshots yet" message and capture button
-- [ ] 5.5 Add toast notification system for capture feedback
+- [x] 5.1 Create main App.svelte layout with tab bar, toolbar, and canvas area
+- [x] 5.2 Implement Tab store with add/remove/select functionality
+- [x] 5.3 Create TabBar component with label, close button, active highlighting
+- [x] 5.4 Implement empty state view with "No screenshots yet" message and capture button
+- [x] 5.5 Add toast notification system for capture feedback
 
 ## 6. Canvas System
 
-- [ ] 6.1 Create Canvas component with HTML5 Canvas element
-- [ ] 6.2 Implement base layer for screenshot bitmap rendering
-- [ ] 6.3 Implement overlay layer for annotation objects
-- [ ] 6.4 Create annotation object model (type, position, color, stroke, data)
-- [ ] 6.5 Implement canvas resize handling when tab changes
+- [x] 6.1 Create Canvas component with HTML5 Canvas element
+- [x] 6.2 Implement base layer for screenshot bitmap rendering
+- [x] 6.3 Implement overlay layer for annotation objects
+- [x] 6.4 Create annotation object model (type, position, color, stroke, data)
+- [x] 6.5 Implement canvas resize handling when tab changes
 
 ## 7. Selection and Transform
 
