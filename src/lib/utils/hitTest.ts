@@ -181,12 +181,23 @@ export function getAnnotationBounds(ann: Annotation): { x: number; y: number; wi
                 height: radius * 2
             };
         }
-        default:
-            return {
-                x: ann.x,
-                y: ann.y,
-                width: ann.width ?? 0,
-                height: ann.height ?? 0
-            };
+        default: {
+            let x = ann.x;
+            let y = ann.y;
+            let width = ann.width ?? 0;
+            let height = ann.height ?? 0;
+
+            // Normalize negative dimensions
+            if (width < 0) {
+                x += width;
+                width = Math.abs(width);
+            }
+            if (height < 0) {
+                y += height;
+                height = Math.abs(height);
+            }
+
+            return { x, y, width, height };
+        }
     }
 }

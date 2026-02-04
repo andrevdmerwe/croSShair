@@ -28,6 +28,8 @@ export interface TabData {
     imagePath: string;
     originalImagePath: string;
     annotations: Annotation[];
+    history: Annotation[][]; // Stack of annotation states
+    historyIndex: number;    // Current position in history
     isDirty: boolean;
     timestamp: number;
     stepCounter: number;

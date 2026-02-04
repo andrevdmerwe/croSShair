@@ -8,6 +8,7 @@
   import TabBar from "$lib/components/TabBar.svelte";
   import EmptyState from "$lib/components/EmptyState.svelte";
   import Toast from "$lib/components/Toast.svelte";
+  import ToolPalette from "$lib/components/ToolPalette.svelte";
   import Canvas from "$lib/components/Canvas.svelte";
   import type { TabData, Annotation } from "$lib/types";
 
@@ -24,6 +25,8 @@
           imagePath: result.filePath,
           originalImagePath: result.filePath, // For "Overwrite original"
           annotations: [],
+          history: [[]], // Initial empty history state
+          historyIndex: 0,
           isDirty: false,
           timestamp: Date.now(),
           stepCounter: 1,
@@ -59,15 +62,20 @@
   </div>
 
   <div class="content-area">
-    {#if tabStore.tabs.length === 0}
-      <EmptyState onCapture={handleCapture} />
-    {:else}
-      {#key tabStore.activeTabId}
-        {#if tabStore.getTab(tabStore.activeTabId || "")}
-          <Canvas tab={tabStore.getTab(tabStore.activeTabId || "")!} />
-        {/if}
-      {/key}
-    {/if}
+    <div class="sidebar">
+      <ToolPalette />
+    </div>
+    <div class="canvas-viewport">
+      {#if tabStore.tabs.length === 0}
+        <EmptyState onCapture={handleCapture} />
+      {:else}
+        {#key tabStore.activeTabId}
+          {#if tabStore.getTab(tabStore.activeTabId || "")}
+            <Canvas tab={tabStore.getTab(tabStore.activeTabId || "")!} />
+          {/if}
+        {/key}
+      {/if}
+    </div>
   </div>
 
   <Toast />
@@ -99,5 +107,20 @@
     position: relative;
     overflow: hidden;
     background: #333;
+    display: flex;
+    flex-direction: row;
+  }
+
+  .sidebar {
+    flex: 0 0 auto;
+    height: 100%;
+    z-index: 10;
+  }
+
+  .canvas-viewport {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    display: flex; /* Ensure Canvas component fills space */
   }
 </style>

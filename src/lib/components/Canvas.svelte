@@ -4,6 +4,9 @@
 
     import { invoke } from "@tauri-apps/api/core";
     import { toastStore } from "$lib/stores/toast.svelte";
+    import { toolStore } from "$lib/stores/tools.svelte";
+    import { tabStore } from "$lib/stores/tabs.svelte";
+    import { getAnnotationBounds, hitTestAnnotation } from "$lib/utils/hitTest";
 
     let { tab } = $props<{ tab: TabData }>();
 
@@ -24,12 +27,31 @@
         }
     });
 
-    // Re-render when annotations change
+    // Drawing state
+    let isDrawing = $state(false);
+    let drawingAnnotation = $state<Annotation | null>(null);
+    let dragAnnotationStartX = $state(0);
+    let dragAnnotationStartY = $state(0);
+
+    // Resize state
+    let isResizing = $state(false);
+    let resizeHandle = $state<string | null>(null);
+    let originalResizeRect = $state<{
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+    } | null>(null);
+
+    // Re-render when annotations or selection changes
     $effect(() => {
         if (imageLoaded && overlayCtx) {
-            // We depend on tab.annotations to trigger re-renders
-            // Just referencing it is enough for Svelte 5 dependency tracking
+            // Depend on annotations and selection for reactivity
             const _ = tab.annotations;
+            const __ = toolStore.selectedAnnotationId;
+            // Also depend on drawingAnnotation (though it's local state, explicit ref helps)
+            const ___ = drawingAnnotation;
+            const ____ = isResizing; // Re-render when resizing starts/stops
             renderOverlay();
         }
     });
@@ -113,7 +135,110 @@
         if (!overlayCtx) return;
         overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
+        // Render all annotations
         tab.annotations.forEach(renderAnnotation);
+
+        // Render in-progress drawing
+        if (drawingAnnotation) {
+            renderAnnotation(drawingAnnotation);
+        }
+
+        // Render selection outline if an annotation is selected
+        if (toolStore.selectedAnnotationId && !isDrawing) {
+            const selected = tab.annotations.find(
+                (a: Annotation) => a.id === toolStore.selectedAnnotationId,
+            );
+            if (selected) {
+                renderSelectionOutline(selected);
+            }
+        }
+    }
+
+    function renderSelectionOutline(ann: Annotation) {
+        if (!overlayCtx) return;
+
+        const bounds = getAnnotationBounds(ann);
+        const padding = 4;
+
+        overlayCtx.save();
+        overlayCtx.strokeStyle = "#0088ff";
+        overlayCtx.lineWidth = 2; // Fixed width for selection
+        overlayCtx.setLineDash([6, 4]);
+        overlayCtx.strokeRect(
+            bounds.x - padding,
+            bounds.y - padding,
+            bounds.width + padding * 2,
+            bounds.height + padding * 2,
+        );
+
+        // Draw resize handles
+        overlayCtx.setLineDash([]);
+        overlayCtx.fillStyle = "#ffffff";
+        overlayCtx.strokeStyle = "#0088ff";
+        const handleSize = 8 / scale;
+
+        const handles = getResizeHandles(bounds, padding);
+
+        handles.forEach((h) => {
+            overlayCtx!.fillRect(
+                h.x - handleSize / 2,
+                h.y - handleSize / 2,
+                handleSize,
+                handleSize,
+            );
+            overlayCtx!.strokeRect(
+                h.x - handleSize / 2,
+                h.y - handleSize / 2,
+                handleSize,
+                handleSize,
+            );
+        });
+
+        overlayCtx.restore();
+    }
+
+    function getResizeHandles(
+        bounds: { x: number; y: number; width: number; height: number },
+        padding: number,
+    ) {
+        const x = bounds.x - padding;
+        const y = bounds.y - padding;
+        const w = bounds.width + padding * 2;
+        const h = bounds.height + padding * 2;
+
+        return [
+            { id: "nw", x: x, y: y },
+            { id: "n", x: x + w / 2, y: y },
+            { id: "ne", x: x + w, y: y },
+            { id: "e", x: x + w, y: y + h / 2 },
+            { id: "se", x: x + w, y: y + h },
+            { id: "s", x: x + w / 2, y: y + h },
+            { id: "sw", x: x, y: y + h },
+            { id: "w", x: x, y: y + h / 2 },
+        ];
+    }
+
+    function hitTestHandle(x: number, y: number): string | null {
+        if (!toolStore.selectedAnnotationId) return null;
+        const ann = tab.annotations.find(
+            (a) => a.id === toolStore.selectedAnnotationId,
+        );
+        if (!ann) return null;
+
+        const bounds = getAnnotationBounds(ann);
+        const padding = 4;
+        const handles = getResizeHandles(bounds, padding);
+        const hitThreshold = 6 / scale; // Pixel radius for hit
+
+        for (const h of handles) {
+            if (
+                Math.abs(x - h.x) < hitThreshold &&
+                Math.abs(y - h.y) < hitThreshold
+            ) {
+                return h.id;
+            }
+        }
+        return null;
     }
 
     function renderAnnotation(ann: Annotation) {
@@ -148,30 +273,435 @@
                 break;
 
             case "rectangle":
-                if (ann.width && ann.height) {
+                if (ann.width !== undefined && ann.height !== undefined) {
                     overlayCtx.strokeRect(ann.x, ann.y, ann.width, ann.height);
                 }
                 break;
 
             case "ellipse":
-                if (ann.width && ann.height) {
+                if (ann.width !== undefined && ann.height !== undefined) {
+                    // Ellipse logic handles negative width/height naturally
                     overlayCtx.beginPath();
-                    overlayCtx.ellipse(
-                        ann.x + ann.width / 2,
-                        ann.y + ann.height / 2,
-                        Math.abs(ann.width / 2),
-                        Math.abs(ann.height / 2),
-                        0,
-                        0,
-                        2 * Math.PI,
-                    );
+                    const radiusX = Math.abs(ann.width / 2);
+                    const radiusY = Math.abs(ann.height / 2);
+                    const centerX = ann.x + ann.width / 2;
+                    const centerY = ann.y + ann.height / 2;
+
+                    if (radiusX > 0 && radiusY > 0) {
+                        overlayCtx.ellipse(
+                            centerX,
+                            centerY,
+                            radiusX,
+                            radiusY,
+                            0,
+                            0,
+                            2 * Math.PI,
+                        );
+                        overlayCtx.stroke();
+                    }
+                }
+                break;
+
+            case "line":
+                if (
+                    ann.data?.endX !== undefined &&
+                    ann.data?.endY !== undefined
+                ) {
+                    overlayCtx.beginPath();
+                    overlayCtx.moveTo(ann.x, ann.y);
+                    overlayCtx.lineTo(ann.data.endX, ann.data.endY);
                     overlayCtx.stroke();
                 }
                 break;
 
-            // Other types implementation...
+            case "arrow":
+                if (
+                    ann.data?.endX !== undefined &&
+                    ann.data?.endY !== undefined
+                ) {
+                    const headLength = 15;
+                    const dx = ann.data.endX - ann.x;
+                    const dy = ann.data.endY - ann.y;
+                    const angle = Math.atan2(dy, dx);
+
+                    overlayCtx.beginPath();
+                    overlayCtx.moveTo(ann.x, ann.y);
+                    overlayCtx.lineTo(ann.data.endX, ann.data.endY);
+                    overlayCtx.stroke();
+
+                    // Arrowhead
+                    overlayCtx.beginPath();
+                    overlayCtx.moveTo(ann.data.endX, ann.data.endY);
+                    overlayCtx.lineTo(
+                        ann.data.endX -
+                            headLength * Math.cos(angle - Math.PI / 6),
+                        ann.data.endY -
+                            headLength * Math.sin(angle - Math.PI / 6),
+                    );
+                    overlayCtx.moveTo(ann.data.endX, ann.data.endY);
+                    overlayCtx.lineTo(
+                        ann.data.endX -
+                            headLength * Math.cos(angle + Math.PI / 6),
+                        ann.data.endY -
+                            headLength * Math.sin(angle + Math.PI / 6),
+                    );
+                    overlayCtx.stroke();
+                }
+                break;
         }
         overlayCtx.restore();
+    }
+
+    /**
+     * Convert mouse event coordinates to canvas coordinates
+     */
+    function getCanvasCoords(e: MouseEvent): { x: number; y: number } {
+        const rect = overlayCanvas.getBoundingClientRect();
+        return {
+            x: (e.clientX - rect.left) / scale,
+            y: (e.clientY - rect.top) / scale,
+        };
+    }
+
+    /**
+     * Find the topmost annotation at the given canvas coordinates
+     * (iterate in reverse to pick the one rendered on top)
+     */
+    function findAnnotationAt(x: number, y: number): Annotation | null {
+        for (let i = tab.annotations.length - 1; i >= 0; i--) {
+            if (hitTestAnnotation(tab.annotations[i], x, y, scale)) {
+                return tab.annotations[i];
+            }
+        }
+        return null;
+    }
+
+    // Drag state
+    let isDragging = $state(false);
+    let potentialDrag = $state(false); // Track if mouse down on object but not yet dragged
+    let dragStartX = $state(0);
+    let dragStartY = $state(0);
+
+    // ... (rest of imports/state)
+
+    function handleMouseDown(e: MouseEvent) {
+        const { x, y } = getCanvasCoords(e);
+
+        // Check for resize handle hit first
+        if (
+            toolStore.currentTool === "select" &&
+            toolStore.selectedAnnotationId
+        ) {
+            const handle = hitTestHandle(x, y);
+            if (handle) {
+                isResizing = true;
+                resizeHandle = handle;
+                const ann = tab.annotations.find(
+                    (a) => a.id === toolStore.selectedAnnotationId,
+                );
+                if (ann) {
+                    originalResizeRect = {
+                        x: ann.x,
+                        y: ann.y,
+                        width: ann.width || 0,
+                        height: ann.height || 0,
+                    };
+                    dragStartX = x;
+                    dragStartY = y;
+                }
+                return;
+            }
+        }
+
+        if (toolStore.currentTool === "select") {
+            const hit = findAnnotationAt(x, y);
+
+            if (hit) {
+                // If clicking a different annotation, select it
+                if (toolStore.selectedAnnotationId !== hit.id) {
+                    toolStore.selectAnnotation(hit.id);
+                }
+
+                potentialDrag = true; // Wait for move to confirm drag
+                dragStartX = x;
+                dragStartY = y;
+                dragAnnotationStartX = hit.x;
+                dragAnnotationStartY = hit.y;
+            } else {
+                // Clicked on empty space - clear selection
+                toolStore.clearSelection();
+            }
+        } else {
+            // Start drawing
+            isDrawing = true;
+            const id = crypto.randomUUID();
+
+            // Initial shape configuration
+            drawingAnnotation = {
+                id,
+                type: toolStore.currentTool as any,
+                x,
+                y,
+                color: toolStore.currentColor,
+                strokeWidth: toolStore.currentStrokeWidth,
+                width: 0,
+                height: 0,
+                data: {},
+            };
+
+            // Tool specific initialization
+            if (
+                toolStore.currentTool === "pen" ||
+                toolStore.currentTool === "highlighter"
+            ) {
+                drawingAnnotation.data = { points: [{ x, y }] };
+                drawingAnnotation.width = 0;
+                drawingAnnotation.height = 0;
+            } else if (
+                toolStore.currentTool === "line" ||
+                toolStore.currentTool === "arrow"
+            ) {
+                drawingAnnotation.data = { endX: x, endY: y };
+            }
+
+            toolStore.clearSelection();
+            renderOverlay();
+        }
+    }
+
+    function handleMouseMove(e: MouseEvent) {
+        const { x, y } = getCanvasCoords(e);
+
+        if (
+            isResizing &&
+            toolStore.selectedAnnotationId &&
+            originalResizeRect
+        ) {
+            handleResizeMove(x, y);
+            return;
+        }
+
+        if (isDrawing && drawingAnnotation) {
+            // Update drawing
+            if (
+                drawingAnnotation.type === "pen" ||
+                drawingAnnotation.type === "highlighter"
+            ) {
+                drawingAnnotation.data.points.push({ x, y });
+                drawingAnnotation.width = Math.max(
+                    drawingAnnotation.width || 0,
+                    Math.abs(x - drawingAnnotation.x),
+                );
+                drawingAnnotation.height = Math.max(
+                    drawingAnnotation.height || 0,
+                    Math.abs(y - drawingAnnotation.y),
+                );
+            } else if (
+                drawingAnnotation.type === "rectangle" ||
+                drawingAnnotation.type === "ellipse"
+            ) {
+                drawingAnnotation.width = x - drawingAnnotation.x;
+                drawingAnnotation.height = y - drawingAnnotation.y;
+            } else if (
+                drawingAnnotation.type === "line" ||
+                drawingAnnotation.type === "arrow"
+            ) {
+                drawingAnnotation.data.endX = x;
+                drawingAnnotation.data.endY = y;
+                drawingAnnotation.width = Math.abs(x - drawingAnnotation.x);
+                drawingAnnotation.height = Math.abs(y - drawingAnnotation.y);
+            }
+
+            renderOverlay();
+            return;
+        }
+
+        // Handle potential drag becoming real drag
+        if (potentialDrag && !isDragging) {
+            const dx = Math.abs(x - dragStartX);
+            const dy = Math.abs(y - dragStartY);
+            if (dx > 3 || dy > 3) {
+                // Drag threshold
+                isDragging = true;
+            }
+        }
+
+        if (!isDragging || !toolStore.selectedAnnotationId) return;
+
+        // Selection Dragging Logic
+        const dx = x - dragStartX;
+        const dy = y - dragStartY;
+
+        const ann = tab.annotations.find(
+            (a: Annotation) => a.id === toolStore.selectedAnnotationId,
+        );
+        if (!ann) return;
+
+        // Calculate new position
+        const newX = dragAnnotationStartX + dx;
+        const newY = dragAnnotationStartY + dy;
+
+        // For paths (pen/highlighter), we need to offset all points
+        if (
+            (ann.type === "pen" || ann.type === "highlighter") &&
+            ann.data?.points
+        ) {
+            const originalAnn = tabStore.getAnnotation(tab.id, ann.id);
+            if (originalAnn?.data?.points) {
+                const offsetX = newX - ann.x;
+                const offsetY = newY - ann.y;
+
+                const newPoints = ann.data.points.map(
+                    (p: { x: number; y: number }) => ({
+                        x: p.x + offsetX,
+                        y: p.y + offsetY,
+                    }),
+                );
+
+                tabStore.updateAnnotation(tab.id, ann.id, {
+                    x: newX,
+                    y: newY,
+                    data: { ...ann.data, points: newPoints },
+                });
+            }
+        } else if (
+            (ann.type === "line" || ann.type === "arrow") &&
+            ann.data?.endX !== undefined
+        ) {
+            // For lines/arrows, also move the end point
+            const endXOffset = ann.data.endX - ann.x;
+            const endYOffset = ann.data.endY - ann.y;
+
+            tabStore.updateAnnotation(tab.id, ann.id, {
+                x: newX,
+                y: newY,
+                data: {
+                    ...ann.data,
+                    endX: newX + endXOffset,
+                    endY: newY + endYOffset,
+                },
+            });
+        } else {
+            // Simple case: just update x, y
+            tabStore.updateAnnotation(tab.id, ann.id, { x: newX, y: newY });
+        }
+    }
+
+    function handleResizeMove(x: number, y: number) {
+        if (!resizeHandle || !originalResizeRect) return;
+
+        let { x: ax, y: ay, width: aw, height: ah } = originalResizeRect;
+        const dx = x - dragStartX;
+        const dy = y - dragStartY;
+
+        // Simple resizing logic for Rect/Ellipse
+        // For lines/paths, resizing is harder (scaling).
+        // Let's implement rect/ellipse resizing first.
+
+        let newX = ax;
+        let newY = ay;
+        let newW = aw;
+        let newH = ah;
+
+        switch (resizeHandle) {
+            case "e":
+                newW += dx;
+                break;
+            case "w":
+                newX += dx;
+                newW -= dx;
+                break;
+            case "s":
+                newH += dy;
+                break;
+            case "n":
+                newY += dy;
+                newH -= dy;
+                break;
+            case "se":
+                newW += dx;
+                newH += dy;
+                break;
+            case "sw":
+                newX += dx;
+                newW -= dx;
+                newH += dy;
+                break;
+            case "ne":
+                newY += dy;
+                newW += dx;
+                newH -= dy;
+                break;
+            case "nw":
+                newX += dx;
+                newY += dy;
+                newW -= dx;
+                newH -= dy;
+                break;
+        }
+
+        tabStore.updateAnnotation(tab.id, toolStore.selectedAnnotationId!, {
+            x: newX,
+            y: newY,
+            width: newW,
+            height: newH,
+        });
+    }
+
+    function handleMouseUp() {
+        if (isDrawing && drawingAnnotation) {
+            // Finalize drawing
+            // addAnnotation already pushes history
+            tabStore.addAnnotation(tab.id, $state.snapshot(drawingAnnotation));
+            drawingAnnotation = null;
+            renderOverlay();
+        } else if (isDragging || isResizing) {
+            // Commit history ONLY if we actually dragged or resized
+            tabStore.commitHistory(tab.id);
+        }
+        isDrawing = false;
+        isDragging = false;
+        potentialDrag = false;
+        isResizing = false;
+        resizeHandle = null;
+        originalResizeRect = null;
+    }
+
+    function handleMouseLeave() {
+        // If mouse leaves canvas while drawing/dragging, treat as mouseup
+        if (isDrawing || isDragging) {
+            handleMouseUp();
+        }
+    }
+
+    function handleKeyDown(e: KeyboardEvent) {
+        // Global shortcuts (Undo/Redo)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+            e.preventDefault();
+            tabStore.undo(tab.id);
+            return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+            e.preventDefault();
+            tabStore.redo(tab.id);
+            return;
+        }
+
+        // Only handle delete if we have a selection
+        if (!toolStore.selectedAnnotationId) return;
+
+        if (e.key === "Delete" || e.key === "Backspace") {
+            e.preventDefault();
+            deleteSelectedAnnotation();
+        }
+    }
+
+    function deleteSelectedAnnotation() {
+        if (toolStore.selectedAnnotationId) {
+            // removeAnnotation already pushes history
+            tabStore.removeAnnotation(tab.id, toolStore.selectedAnnotationId);
+            toolStore.clearSelection();
+        }
     }
 
     onMount(() => {
@@ -181,14 +711,31 @@
         const observer = new ResizeObserver(() => resizeCanvas());
         observer.observe(canvasContainer);
 
-        return () => observer.disconnect();
+        // Add global mouseup/mouseleave listeners
+        window.addEventListener("mouseup", handleMouseUp);
+        window.addEventListener("mouseleave", handleMouseLeave);
+        // Add global keydown for shortcuts (so it works even if canvas isn't focused)
+        window.addEventListener("keydown", handleKeyDown);
+
+        return () => {
+            observer.disconnect();
+            window.removeEventListener("mouseup", handleMouseUp);
+            window.removeEventListener("mouseleave", handleMouseLeave);
+            window.removeEventListener("keydown", handleKeyDown);
+        };
     });
 </script>
 
 <div class="canvas-container" bind:this={canvasContainer}>
     <div class="canvas-stack">
         <canvas bind:this={baseCanvas} class="layer base"></canvas>
-        <canvas bind:this={overlayCanvas} class="layer overlay"></canvas>
+        <canvas
+            bind:this={overlayCanvas}
+            class="layer overlay"
+            onmousedown={handleMouseDown}
+            onmousemove={handleMouseMove}
+            tabindex="0"
+        ></canvas>
     </div>
 </div>
 
@@ -229,5 +776,6 @@
         top: 0;
         left: 0;
         pointer-events: auto; /* Allow interactions */
+        outline: none; /* Remove focus outline */
     }
 </style>
