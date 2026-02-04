@@ -10,6 +10,8 @@
         { id: "ellipse", label: "Ellipse", icon: "◯" },
         { id: "line", label: "Line", icon: "／" },
         { id: "arrow", label: "Arrow", icon: "↗" },
+        { id: "step", label: "Step Number", icon: "➊" },
+        { id: "pixelate", label: "Pixelate", icon: "░" },
     ];
 
     const colors = [

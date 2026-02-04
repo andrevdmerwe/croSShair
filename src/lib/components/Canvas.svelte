@@ -41,6 +41,8 @@
         y: number;
         width: number;
         height: number;
+        pointerX?: number;
+        pointerY?: number;
     } | null>(null);
 
     // Re-render when annotations or selection changes
@@ -194,6 +196,23 @@
             );
         });
 
+        // Special handle for Step Pointer
+        if (ann.type === "step" && ann.data?.pointerX !== undefined) {
+            overlayCtx.fillStyle = "#ffff00"; // distinct color for pointer handle
+            overlayCtx.fillRect(
+                ann.data.pointerX - handleSize / 2,
+                ann.data.pointerY - handleSize / 2,
+                handleSize,
+                handleSize,
+            );
+            overlayCtx.strokeRect(
+                ann.data.pointerX - handleSize / 2,
+                ann.data.pointerY - handleSize / 2,
+                handleSize,
+                handleSize,
+            );
+        }
+
         overlayCtx.restore();
     }
 
@@ -238,6 +257,17 @@
                 return h.id;
             }
         }
+
+        // Check pointer handle
+        if (ann.type === "step" && ann.data?.pointerX !== undefined) {
+            if (
+                Math.abs(x - ann.data.pointerX) < hitThreshold &&
+                Math.abs(y - ann.data.pointerY) < hitThreshold
+            ) {
+                return "pointer";
+            }
+        }
+
         return null;
     }
 
@@ -298,7 +328,144 @@
                             2 * Math.PI,
                         );
                         overlayCtx.stroke();
+
+                        // Reset line caps for other shapes
+                        overlayCtx.lineCap = "round";
+                        overlayCtx.lineJoin = "round";
                     }
+                }
+                break;
+
+            case "step":
+                {
+                    const radius = 15;
+                    const pointerX = ann.data?.pointerX;
+                    const pointerY = ann.data?.pointerY;
+
+                    overlayCtx.fillStyle = ann.color;
+                    overlayCtx.strokeStyle = ann.color; // For outline if needed, or matched color
+
+                    // Draw pointer tail if it exists and is far enough
+                    if (pointerX !== undefined && pointerY !== undefined) {
+                        const dx = pointerX - ann.x;
+                        const dy = pointerY - ann.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        if (dist > radius) {
+                            const angle = Math.atan2(dy, dx);
+                            // Calculate tangent points on the circle
+                            // Actually, let's just use perpendiculars for a "thick" neck
+                            // Or simpler: Triangle from tip to +/- PI/2 at circle
+                            const alpha = Math.PI / 2;
+                            const p1x =
+                                ann.x + radius * Math.cos(angle + alpha);
+                            const p1y =
+                                ann.y + radius * Math.sin(angle + alpha);
+                            const p2x =
+                                ann.x + radius * Math.cos(angle - alpha);
+                            const p2y =
+                                ann.y + radius * Math.sin(angle - alpha);
+
+                            overlayCtx.beginPath();
+                            overlayCtx.moveTo(pointerX, pointerY);
+                            overlayCtx.lineTo(p1x, p1y);
+                            overlayCtx.lineTo(p2x, p2y);
+                            overlayCtx.closePath();
+                            overlayCtx.fill();
+                            overlayCtx.stroke();
+                        }
+                    }
+
+                    overlayCtx.beginPath();
+                    overlayCtx.arc(ann.x, ann.y, radius, 0, 2 * Math.PI);
+                    overlayCtx.fill();
+                    overlayCtx.stroke(); // Border?
+                    // Actually usually step counters don't have borders if filled.
+                    // But previous code had stroke().
+
+                    // Draw Number
+                    overlayCtx.fillStyle = "#ffffff"; // White text
+                    overlayCtx.font = "bold 16px sans-serif";
+                    overlayCtx.textAlign = "center";
+                    overlayCtx.textBaseline = "middle";
+                    overlayCtx.fillText(
+                        String(ann.data?.number || "?"),
+                        ann.x,
+                        ann.y,
+                    );
+                }
+                break;
+
+            case "pixelate":
+                if (
+                    ann.width !== undefined &&
+                    ann.height !== undefined &&
+                    Math.abs(ann.width) > 0 &&
+                    Math.abs(ann.height) > 0
+                ) {
+                    // Normalize bounds
+                    const x = ann.width < 0 ? ann.x + ann.width : ann.x;
+                    const y = ann.height < 0 ? ann.y + ann.height : ann.y;
+                    const w = Math.abs(ann.width);
+                    const h = Math.abs(ann.height);
+
+                    // 1. Clip to the pixelation rect
+                    overlayCtx.beginPath();
+                    overlayCtx.rect(x, y, w, h);
+                    overlayCtx.save();
+                    overlayCtx.clip();
+
+                    // 2. Sample from baseCanvas
+                    if (baseCanvas) {
+                        try {
+                            const pixelationFactor = 0.05;
+                            const sw = Math.max(
+                                1,
+                                Math.floor(w * pixelationFactor),
+                            );
+                            const sh = Math.max(
+                                1,
+                                Math.floor(h * pixelationFactor),
+                            );
+
+                            const tempCanvas = document.createElement("canvas");
+                            tempCanvas.width = sw;
+                            tempCanvas.height = sh;
+                            const tempCtx = tempCanvas.getContext("2d");
+
+                            if (tempCtx) {
+                                tempCtx.imageSmoothingEnabled = false;
+                                tempCtx.drawImage(
+                                    baseCanvas,
+                                    x,
+                                    y,
+                                    w,
+                                    h,
+                                    0,
+                                    0,
+                                    sw,
+                                    sh,
+                                );
+
+                                overlayCtx.imageSmoothingEnabled = false;
+                                overlayCtx.drawImage(
+                                    tempCanvas,
+                                    0,
+                                    0,
+                                    sw,
+                                    sh,
+                                    x,
+                                    y,
+                                    w,
+                                    h,
+                                );
+                                overlayCtx.imageSmoothingEnabled = true;
+                            }
+                        } catch (e) {
+                            console.error("Pixelation error", e);
+                        }
+                    }
+                    overlayCtx.restore();
                 }
                 break;
 
@@ -405,6 +572,8 @@
                         y: ann.y,
                         width: ann.width || 0,
                         height: ann.height || 0,
+                        pointerX: ann.data?.pointerX,
+                        pointerY: ann.data?.pointerY,
                     };
                     dragStartX = x;
                     dragStartY = y;
@@ -462,6 +631,23 @@
                 toolStore.currentTool === "arrow"
             ) {
                 drawingAnnotation.data = { endX: x, endY: y };
+            } else if (toolStore.currentTool === "step") {
+                // Dynamic step counting: Max + 1
+                const existingSteps = tab.annotations
+                    .filter(
+                        (a) =>
+                            a.type === "step" &&
+                            typeof a.data?.number === "number",
+                    )
+                    .map((a) => a.data.number);
+                const nextNum =
+                    existingSteps.length > 0
+                        ? Math.max(...existingSteps) + 1
+                        : 1;
+
+                drawingAnnotation.data = { number: nextNum };
+                drawingAnnotation.width = 30; // 2 * radius (15)
+                drawingAnnotation.height = 30;
             }
 
             toolStore.clearSelection();
@@ -498,7 +684,8 @@
                 );
             } else if (
                 drawingAnnotation.type === "rectangle" ||
-                drawingAnnotation.type === "ellipse"
+                drawingAnnotation.type === "ellipse" ||
+                drawingAnnotation.type === "pixelate"
             ) {
                 drawingAnnotation.width = x - drawingAnnotation.x;
                 drawingAnnotation.height = y - drawingAnnotation.y;
@@ -510,6 +697,17 @@
                 drawingAnnotation.data.endY = y;
                 drawingAnnotation.width = Math.abs(x - drawingAnnotation.x);
                 drawingAnnotation.height = Math.abs(y - drawingAnnotation.y);
+            } else if (drawingAnnotation.type === "step") {
+                drawingAnnotation.data.pointerX = x;
+                drawingAnnotation.data.pointerY = y;
+                // Update bounds to encompass pointer
+                const r = 15;
+                const top = Math.min(drawingAnnotation.y - r, y);
+                const left = Math.min(drawingAnnotation.x - r, x);
+                const bottom = Math.max(drawingAnnotation.y + r, y);
+                const right = Math.max(drawingAnnotation.x + r, x);
+                drawingAnnotation.width = right - left;
+                drawingAnnotation.height = bottom - top;
             }
 
             renderOverlay();
@@ -563,6 +761,8 @@
                     y: newY,
                     data: { ...ann.data, points: newPoints },
                 });
+            } else {
+                tabStore.updateAnnotation(tab.id, ann.id, { x: newX, y: newY });
             }
         } else if (
             (ann.type === "line" || ann.type === "arrow") &&
@@ -579,6 +779,18 @@
                     ...ann.data,
                     endX: newX + endXOffset,
                     endY: newY + endYOffset,
+                },
+            });
+        } else if (ann.type === "step" && ann.data?.pointerX !== undefined) {
+            const offsetX = newX - ann.x;
+            const offsetY = newY - ann.y;
+            tabStore.updateAnnotation(tab.id, ann.id, {
+                x: newX,
+                y: newY,
+                data: {
+                    ...ann.data,
+                    pointerX: ann.data.pointerX + offsetX,
+                    pointerY: ann.data.pointerY + offsetY,
                 },
             });
         } else {

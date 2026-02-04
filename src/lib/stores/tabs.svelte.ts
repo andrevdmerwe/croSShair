@@ -1,4 +1,4 @@
-import type { TabData } from '../types';
+import type { TabData, Annotation } from '../types';
 
 class TabStore {
     tabs = $state<TabData[]>([]);
@@ -78,13 +78,18 @@ class TabStore {
         return tab?.annotations.find(a => a.id === annotationId);
     }
 
-    addAnnotation(tabId: string, annotation: any) {
+    addAnnotation(tabId: string, annotation: Annotation) {
         const tab = this.getTab(tabId);
         if (tab) {
             // Create a new array reference to trigger reactivity
             tab.annotations = [...tab.annotations, annotation];
+
+            if (annotation.type === 'step') {
+                tab.stepCounter = (tab.stepCounter || 1) + 1;
+            }
+
             tab.isDirty = true;
-            this.pushHistory(tab);
+            this.pushHistory(tab); // Add to history
         }
     }
 
