@@ -72,7 +72,9 @@
 
   <div class="content-area">
     <div class="sidebar">
-      <ToolPalette />
+      <div class="sidebar">
+        <ToolPalette onCapture={handleCapture} />
+      </div>
     </div>
     <div class="canvas-viewport">
       {#if tabStore.tabs.length === 0}

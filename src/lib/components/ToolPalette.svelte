@@ -22,6 +22,8 @@
     let colors = $derived(settingsStore.settings.toolbarPalette);
     let showSettings = $state(false);
 
+    let { onCapture } = $props<{ onCapture?: () => void }>();
+
     onMount(() => {
         // Initialize tool defaults from settings on startup
         toolStore.setTool(settingsStore.settings.defaultTool as Tool);
@@ -41,7 +43,7 @@
 </script>
 
 <div class="palette">
-    <!-- Settings Button (Top) -->
+    <!-- Utility Buttons (Top) -->
     <div class="section settings">
         <button
             class="tool-btn"
@@ -49,6 +51,13 @@
             title="Settings"
         >
             <span class="icon">⚙</span>
+        </button>
+        <button
+            class="tool-btn"
+            onclick={() => onCapture?.()}
+            title="New Screenshot"
+        >
+            <span class="icon">📷</span>
         </button>
     </div>
 
