@@ -42,4 +42,5 @@ export interface AppConfig {
     copyAfterCapture: boolean;
     defaultColor: string;
     defaultStrokeWidth: 'Thin' | 'Medium' | 'Thick';
+    lastSaveDirectory?: string;
 }

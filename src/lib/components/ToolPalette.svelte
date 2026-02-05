@@ -23,9 +23,10 @@
     let colors = $derived(settingsStore.settings.toolbarPalette);
     let showSettings = $state(false);
 
-    let { onCapture, onSave, onCopy } = $props<{
+    let { onCapture, onSave, onSaveAs, onCopy } = $props<{
         onCapture?: () => void;
         onSave?: () => void;
+        onSaveAs?: () => void;
         onCopy?: () => void;
     }>();
 
@@ -67,8 +68,20 @@
 
         <div class="divider"></div>
 
-        <button class="tool-btn" onclick={() => onSave?.()} title="Save Image">
+        <button
+            class="tool-btn"
+            onclick={() => onSave?.()}
+            title="Save (Overwrite)"
+        >
             <span class="icon">💾</span>
+        </button>
+
+        <button
+            class="tool-btn"
+            onclick={() => onSaveAs?.()}
+            title="Save As..."
+        >
+            <span class="icon">💾+</span>
         </button>
 
         <button

@@ -53,24 +53,82 @@
 
   async function handleSave() {
     if (!currentCanvas || !tabStore.activeTabId) return;
+    const tab = tabStore.getTab(tabStore.activeTabId);
+    if (!tab) return;
+
+    try {
+      // Direct overwrite if we have a path
+      const filePath = tab.originalImagePath;
+      if (!filePath) {
+        // Fallback to Save As if no path
+        await handleSaveAs();
+        return;
+      }
+
+      const base64 = await currentCanvas.exportImage();
+      await invoke("save_image", { base64Data: base64, filePath });
+      toastStore.add("success", "Image saved");
+    } catch (e) {
+      console.error("Save failed:", e);
+      toastStore.add("error", `Failed to save: ${e}`);
+    }
+  }
+
+  async function handleSaveAs() {
+    if (!currentCanvas || !tabStore.activeTabId) return;
+    const tab = tabStore.getTab(tabStore.activeTabId);
+    if (!tab) return;
 
     try {
       const base64 = await currentCanvas.exportImage();
-      
+
+      const suggestedName = tab.label.endsWith(".png")
+        ? tab.label
+        : `${tab.label}.png`;
+      let defaultPath = suggestedName;
+
+      // Prepend last directory if available
+      if (settingsStore.settings.lastSaveDirectory) {
+        const dir = settingsStore.settings.lastSaveDirectory;
+        // Ensure proper separator (simple check)
+        const sep = dir.includes("\\") ? "\\" : "/";
+        const cleanDir = dir.endsWith(sep) ? dir : `${dir}${sep}`;
+        defaultPath = `${cleanDir}${suggestedName}`;
+      }
+
       const filePath = await save({
-        filters: [{
-          name: 'Image',
-          extensions: ['png']
-        }],
-        defaultPath: 'screenshot_annotated.png',
+        filters: [
+          {
+            name: "Image",
+            extensions: ["png"],
+          },
+        ],
+        defaultPath,
       });
 
       if (filePath) {
         await invoke("save_image", { base64Data: base64, filePath });
+
+        // Update tab info to reflect new location
+        tabStore.updateTab(tab.id, {
+          imagePath: filePath,
+          originalImagePath: filePath,
+          label: filePath.split("/").pop() || "Saved Image",
+        });
+
+        // Persist directory
+        const separator = filePath.includes("\\") ? "\\" : "/";
+        const lastIndex = filePath.lastIndexOf(separator);
+        if (lastIndex !== -1) {
+          const dir = filePath.substring(0, lastIndex);
+          settingsStore.updateSetting("lastSaveDirectory", dir);
+          settingsStore.save(); // Ensure it saves to disk
+        }
+
         toastStore.add("success", "Image saved successfully");
       }
     } catch (e) {
-      console.error("Save failed:", e);
+      console.error("Save As failed:", e);
       toastStore.add("error", `Failed to save image: ${e}`);
     }
   }
@@ -113,10 +171,11 @@
   <div class="content-area">
     <div class="sidebar">
       <div class="sidebar">
-        <ToolPalette 
-            onCapture={handleCapture} 
-            onSave={handleSave} 
-            onCopy={handleCopy} 
+        <ToolPalette
+          onCapture={handleCapture}
+          onSave={handleSave}
+          onSaveAs={handleSaveAs}
+          onCopy={handleCopy}
         />
       </div>
     </div>
@@ -126,9 +185,9 @@
       {:else}
         {#key tabStore.activeTabId}
           {#if tabStore.getTab(tabStore.activeTabId || "")}
-            <Canvas 
-                bind:this={currentCanvas}
-                tab={tabStore.getTab(tabStore.activeTabId || "")!} 
+            <Canvas
+              bind:this={currentCanvas}
+              tab={tabStore.getTab(tabStore.activeTabId || "")!}
             />
           {/if}
         {/key}
