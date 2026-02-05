@@ -88,6 +88,7 @@ pub fn capture_region(geometry: &str, output_path: &PathBuf) -> Result<(), io::E
 }
 
 /// Capture a region and pipe directly to clipboard
+#[allow(dead_code)]
 pub fn capture_region_to_clipboard(geometry: &str) -> Result<(), io::Error> {
     // Use shell to pipe: grim -g "$geometry" - | wl-copy
     let output = Command::new("sh")

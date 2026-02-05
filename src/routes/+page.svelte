@@ -4,6 +4,7 @@
   import { onMount } from "svelte";
 
   import { tabStore } from "$lib/stores/tabs.svelte";
+  import { settingsStore } from "$lib/stores/settings.svelte";
   import { toastStore } from "$lib/stores/toast.svelte";
   import TabBar from "$lib/components/TabBar.svelte";
   import EmptyState from "$lib/components/EmptyState.svelte";
@@ -14,8 +15,11 @@
 
   async function handleCapture() {
     try {
-      // Invoke Rust capture command
-      const result: any = await invoke("take_screenshot");
+      // Invoke Rust capture command with optional storage path
+      const result: any = await invoke("take_screenshot", {
+        // savePath: settingsStore.settings.storagePath || undefined // Debugging blank screen
+        savePath: undefined,
+      });
 
       if (result.success && result.filePath) {
         // Create new tab
@@ -53,6 +57,11 @@
     return () => {
       unlisten.then((f) => f());
     };
+  });
+
+  // Auto-save settings when they change
+  $effect(() => {
+    settingsStore.save();
   });
 </script>
 

@@ -1,7 +1,10 @@
 <script lang="ts">
     import { toolStore } from "$lib/stores/tools.svelte";
     import { tabStore } from "$lib/stores/tabs.svelte";
+    import { settingsStore } from "$lib/stores/settings.svelte";
+    import SettingsModal from "$lib/components/SettingsModal.svelte";
     import type { Tool } from "$lib/types";
+    import { onMount } from "svelte";
 
     const tools: { id: Tool; label: string; icon: string }[] = [
         // Select tool removed as per request
@@ -15,24 +18,16 @@
         { id: "pixelate", label: "Pixelate", icon: "░" },
     ];
 
-    // Assuming 'colors' array was defined here previously,
-    // it's not provided in the instruction's script block,
-    // so we'll keep the original definition if it existed,
-    // or assume it's part of the '...' if not explicitly defined.
-    // For now, we'll keep the original structure for 'colors' if it was outside the script block,
-    // or assume it's part of the '...' if it was inside.
-    // Given the HTML uses `{#each colors as color}`, `colors` must be an array.
-    // Let's define a placeholder for colors based on common usage.
-    const colors = [
-        "#FF0000",
-        "#00FF00",
-        "#0000FF",
-        "#FFFF00",
-        "#00FFFF",
-        "#FF00FF",
-        "#000000",
-        "#FFFFFF",
-    ];
+    // Dynamic palette from settings
+    let colors = $derived(settingsStore.settings.toolbarPalette);
+    let showSettings = $state(false);
+
+    onMount(() => {
+        // Initialize tool defaults from settings on startup
+        toolStore.setTool(settingsStore.settings.defaultTool as Tool);
+        toolStore.setStrokeWidth(settingsStore.settings.defaultStrokeWidth);
+        toolStore.setColor(settingsStore.settings.defaultColor);
+    });
 
     function commitChange() {
         console.log("ToolPalette: commitChange called", {
@@ -45,14 +40,33 @@
     }
 </script>
 
-```svelte
 <div class="palette">
+    <!-- Settings Button (Top) -->
+    <div class="section settings">
+        <button
+            class="tool-btn"
+            onclick={() => (showSettings = true)}
+            title="Settings"
+        >
+            <span class="icon">⚙</span>
+        </button>
+    </div>
+
+    <div class="divider"></div>
+
     <div class="section tools">
         {#each tools as tool}
             <button
                 class="tool-btn"
                 class:active={toolStore.currentTool === tool.id}
-                onclick={() => toolStore.setTool(tool.id)}
+                onclick={() => {
+                    toolStore.setTool(tool.id);
+                    if (tool.id === "pixelate") {
+                        toolStore.setStrokeWidth(
+                            settingsStore.settings.defaultPixelDensity,
+                        );
+                    }
+                }}
                 title={tool.label}
             >
                 <span class="icon">{tool.icon}</span>
@@ -66,11 +80,11 @@
         {#each colors as color}
             <button
                 class="color-btn"
-                class:active={toolStore.currentColor === color}
+                class:active={toolStore.currentTool !== "highlighter" &&
+                    toolStore.currentColor === color}
                 style="background-color: {color};"
                 onclick={() => {
                     toolStore.setColor(color);
-                    // Explicitly update if something is selected to ensure order: Update -> Commit
                     if (
                         toolStore.selectedAnnotationId &&
                         tabStore.activeTabId
@@ -93,7 +107,6 @@
             oninput={(e) => {
                 const val = e.currentTarget.value;
                 toolStore.setColor(val);
-                // Continuous update for preview
                 if (toolStore.selectedAnnotationId && tabStore.activeTabId) {
                     tabStore.updateAnnotation(
                         tabStore.activeTabId,
@@ -103,7 +116,6 @@
                 }
             }}
             onchange={() => {
-                // Commit on release/close
                 if (toolStore.selectedAnnotationId && tabStore.activeTabId) {
                     tabStore.commitHistory(tabStore.activeTabId);
                 }
@@ -131,7 +143,6 @@
                 oninput={(e) => {
                     const val = parseInt(e.currentTarget.value);
                     toolStore.setStrokeWidth(val);
-                    // Continuous update for preview
                     if (
                         toolStore.selectedAnnotationId &&
                         tabStore.activeTabId
@@ -144,7 +155,6 @@
                     }
                 }}
                 onchange={() => {
-                    // Commit on release
                     if (
                         toolStore.selectedAnnotationId &&
                         tabStore.activeTabId
@@ -158,6 +168,10 @@
     </div>
 </div>
 
+{#if showSettings}
+    <SettingsModal onClose={() => (showSettings = false)} />
+{/if}
+
 <style>
     .palette {
         display: flex;
@@ -169,6 +183,8 @@
         width: 48px;
         align-items: center;
         user-select: none;
+        height: 100%; /* Ensure full height */
+        overflow-y: auto; /* Scroll if needed on small screens */
     }
 
     .section {
@@ -208,6 +224,7 @@
         height: 1px;
         width: 100%;
         background: #444;
+        flex-shrink: 0;
     }
 
     .color-btn {
@@ -260,5 +277,10 @@
         width: 8px;
         height: 100px; /* Adjust height as needed */
         padding: 0 5px;
+    }
+
+    /* Settings button specific */
+    .section.settings {
+        margin-bottom: 0; /* Keep it tight to top */
     }
 </style>

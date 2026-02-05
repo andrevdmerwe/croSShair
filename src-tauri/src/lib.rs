@@ -35,7 +35,7 @@ fn check_cli_dependencies() -> DependencyStatus {
 }
 
 #[tauri::command]
-fn take_screenshot() -> CaptureResult {
+fn take_screenshot(save_path: Option<String>) -> CaptureResult {
     let config = match get_config() {
         Ok(c) => c,
         Err(e) => {
@@ -48,13 +48,15 @@ fn take_screenshot() -> CaptureResult {
         }
     };
 
-    // Log the intended path
-    println!(
-        "Taking screenshot. Directory: {}",
-        config.screenshot_directory
-    );
+    // Use provided path or config directory
+    let directory = save_path
+        .filter(|p| !p.is_empty())
+        .unwrap_or(config.screenshot_directory);
 
-    let result = capture_screenshot(&config.screenshot_directory, config.copy_after_capture);
+    // Log the intended path
+    println!("Taking screenshot. Directory: {}", directory);
+
+    let result = capture_screenshot(&directory, config.copy_after_capture);
 
     if let Some(ref path) = result.file_path {
         println!("Screenshot saved to: {}", path);

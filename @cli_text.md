@@ -1,1 +1,0 @@
-Selection is working as expected and editing partially works. When clicking on a new object, it must retain it's own properties (color, stroke width, etc.) and not be affected by the current tool settings.
