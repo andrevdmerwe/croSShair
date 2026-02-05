@@ -45,6 +45,57 @@
         pointerY?: number;
     } | null>(null);
 
+    // Sync slider <-> selected annotation
+    $effect(() => {
+        if (toolStore.selectedAnnotationId) {
+            const ann = tab.annotations.find(
+                (a) => a.id === toolStore.selectedAnnotationId,
+            );
+            if (ann) {
+                // If slider changed by user (we can't easily distinguish source, so we check diff)
+                // But we need to be careful of loops.
+                // Let's assume toolStore.currentStrokeWidth is the "intent" if it changed recently?
+                // Actually, correct flow:
+                // 1. Select Ann -> ToolStore updates
+                // 2. Change Slider -> ToolStore updates -> Ann updates
+
+                // We implement "Change Slider -> Ann Updates" here
+                if (ann.strokeWidth !== toolStore.currentStrokeWidth) {
+                    // Check if we just selected it?
+                    // No, if we just selected it, we want the slider to update.
+                    // But we can't update ToolStore from here easily without causing a loop if we are not careful.
+                    // Let's rely on handleMouseDown to set the initial slider value on selection.
+
+                    // So here we only do Slider -> Ann
+                    // But we need a flag or logic to know "currentStrokeWidth" is fresh.
+                    // Simplified: Always write to annotation.
+                    // But we need to update toolStore on selection FIRST.
+
+                    tabStore.updateAnnotation(tab.id, ann.id, {
+                        strokeWidth: toolStore.currentStrokeWidth,
+                    });
+                }
+            }
+        }
+    });
+
+    // Update toolstore when selection changes
+    $effect(() => {
+        // This effect runs when selectedAnnotationId changes
+        if (toolStore.selectedAnnotationId) {
+            const ann = tab.annotations.find(
+                (a) => a.id === toolStore.selectedAnnotationId,
+            );
+            // Verify tool type matches to avoid setting "pen" width to "pixelate" density if switching tools (but we clear selection on tool switch anyway)
+            if (ann && ann.strokeWidth) {
+                // Use untracked to avoid loop? Svelte 5 handling...
+                // checking value to avoid infinite loop
+                if (toolStore.currentStrokeWidth !== ann.strokeWidth) {
+                    toolStore.setStrokeWidth(ann.strokeWidth);
+                }
+            }
+        }
+    });
     // Re-render when annotations or selection changes
     $effect(() => {
         if (imageLoaded && overlayCtx) {
@@ -418,19 +469,21 @@
                     // 2. Sample from baseCanvas
                     if (baseCanvas) {
                         try {
-                            const pixelationFactor = 0.05;
-                            const sw = Math.max(
+                            // strokeWidth acts as "block size"
+                            const blockSize = Math.max(
                                 1,
-                                Math.floor(w * pixelationFactor),
+                                ann.strokeWidth || 10,
                             );
-                            const sh = Math.max(
-                                1,
-                                Math.floor(h * pixelationFactor),
-                            );
+                            const sw = Math.floor(w / blockSize);
+                            const sh = Math.floor(h / blockSize);
+
+                            // Ensure at least 1x1 pixel source
+                            const safeSw = Math.max(1, sw);
+                            const safeSh = Math.max(1, sh);
 
                             const tempCanvas = document.createElement("canvas");
-                            tempCanvas.width = sw;
-                            tempCanvas.height = sh;
+                            tempCanvas.width = safeSw;
+                            tempCanvas.height = safeSh;
                             const tempCtx = tempCanvas.getContext("2d");
 
                             if (tempCtx) {
@@ -443,8 +496,8 @@
                                     h,
                                     0,
                                     0,
-                                    sw,
-                                    sh,
+                                    safeSw,
+                                    safeSh,
                                 );
 
                                 overlayCtx.imageSmoothingEnabled = false;
@@ -849,6 +902,27 @@
                 newY += dy;
                 newW -= dx;
                 newH -= dy;
+                break;
+            case "pointer":
+                // Special case: update pointer X/Y relative to original position
+                if (
+                    originalResizeRect.pointerX !== undefined &&
+                    originalResizeRect.pointerY !== undefined
+                ) {
+                    const ann = tab.annotations.find(
+                        (a) => a.id === toolStore.selectedAnnotationId,
+                    );
+                    if (ann) {
+                        tabStore.updateAnnotation(tab.id, ann.id, {
+                            data: {
+                                ...ann.data,
+                                pointerX: originalResizeRect.pointerX + dx,
+                                pointerY: originalResizeRect.pointerY + dy,
+                            },
+                        });
+                    }
+                    return; // Skip main bounds update
+                }
                 break;
         }
 

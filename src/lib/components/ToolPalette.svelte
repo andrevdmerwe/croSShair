@@ -63,29 +63,24 @@
     <div class="divider"></div>
 
     <div class="section stroke">
-        <div class="stroke-label">Size</div>
+        <div class="stroke-label">
+            {#if toolStore.currentTool === "pixelate"}
+                Density: {toolStore.currentStrokeWidth}
+            {:else}
+                Size: {toolStore.currentStrokeWidth}px
+            {/if}
+        </div>
         <div class="stroke-options">
-            <button
-                class="stroke-btn"
-                class:active={toolStore.currentStrokeWidth === 2}
-                onclick={() => toolStore.setStrokeWidth(2)}
-            >
-                <div class="dot small"></div>
-            </button>
-            <button
-                class="stroke-btn"
-                class:active={toolStore.currentStrokeWidth === 5}
-                onclick={() => toolStore.setStrokeWidth(5)}
-            >
-                <div class="dot medium"></div>
-            </button>
-            <button
-                class="stroke-btn"
-                class:active={toolStore.currentStrokeWidth === 10}
-                onclick={() => toolStore.setStrokeWidth(10)}
-            >
-                <div class="dot large"></div>
-            </button>
+            <input
+                type="range"
+                min="1"
+                max={toolStore.currentTool === "pixelate" ? 50 : 20}
+                step="1"
+                value={toolStore.currentStrokeWidth}
+                oninput={(e) =>
+                    toolStore.setStrokeWidth(parseInt(e.currentTarget.value))}
+                class="stroke-slider vertical"
+            />
         </div>
     </div>
 </div>
@@ -181,40 +176,16 @@
         text-align: center;
     }
 
-    .stroke-btn {
-        width: 24px;
-        height: 24px;
-        background: transparent;
-        border: 1px solid transparent;
-        border-radius: 4px;
+    .stroke-slider {
+        width: 100%;
         cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
     }
 
-    .stroke-btn.active {
-        background: #444;
-        border-color: #666;
-    }
-
-    .dot {
-        background: #ccc;
-        border-radius: 50%;
-    }
-
-    .dot.small {
-        width: 4px;
-        height: 4px;
-    }
-
-    .dot.medium {
+    .stroke-slider.vertical {
+        writing-mode: bt-lr; /* IE */
+        -webkit-appearance: slider-vertical; /* WebKit */
         width: 8px;
-        height: 8px;
-    }
-
-    .dot.large {
-        width: 12px;
-        height: 12px;
+        height: 100px; /* Adjust height as needed */
+        padding: 0 5px;
     }
 </style>
