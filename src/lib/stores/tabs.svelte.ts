@@ -47,8 +47,6 @@ class TabStore {
         }
 
         // Push deep copy of annotations
-        // We use JSON parse/stringify for deep copy of simple data objects like Annotations
-        // A structuredClone would also work
         const newState = JSON.parse(JSON.stringify(tab.annotations));
         tab.history.push(newState);
         tab.historyIndex++;

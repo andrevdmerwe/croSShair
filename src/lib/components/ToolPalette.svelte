@@ -1,9 +1,10 @@
 <script lang="ts">
     import { toolStore } from "$lib/stores/tools.svelte";
+    import { tabStore } from "$lib/stores/tabs.svelte";
     import type { Tool } from "$lib/types";
 
     const tools: { id: Tool; label: string; icon: string }[] = [
-        { id: "select", label: "Select", icon: "cursor" },
+        // Select tool removed as per request
         { id: "pen", label: "Pen", icon: "✎" },
         { id: "highlighter", label: "Highlighter", icon: "🖊" },
         { id: "rectangle", label: "Rectangle", icon: "☐" },
@@ -14,18 +15,37 @@
         { id: "pixelate", label: "Pixelate", icon: "░" },
     ];
 
+    // Assuming 'colors' array was defined here previously,
+    // it's not provided in the instruction's script block,
+    // so we'll keep the original definition if it existed,
+    // or assume it's part of the '...' if not explicitly defined.
+    // For now, we'll keep the original structure for 'colors' if it was outside the script block,
+    // or assume it's part of the '...' if it was inside.
+    // Given the HTML uses `{#each colors as color}`, `colors` must be an array.
+    // Let's define a placeholder for colors based on common usage.
     const colors = [
-        "#ff0000", // Red
-        "#00ff00", // Green
-        "#0000ff", // Blue
-        "#ffff00", // Yellow
-        "#ff00ff", // Magenta
-        "#00ffff", // Cyan
-        "#000000", // Black
-        "#ffffff", // White
+        "#FF0000",
+        "#00FF00",
+        "#0000FF",
+        "#FFFF00",
+        "#00FFFF",
+        "#FF00FF",
+        "#000000",
+        "#FFFFFF",
     ];
+
+    function commitChange() {
+        console.log("ToolPalette: commitChange called", {
+            activeTab: tabStore.activeTabId,
+            selected: toolStore.selectedAnnotationId,
+        });
+        if (tabStore.activeTabId && toolStore.selectedAnnotationId) {
+            tabStore.commitHistory(tabStore.activeTabId);
+        }
+    }
 </script>
 
+```svelte
 <div class="palette">
     <div class="section tools">
         {#each tools as tool}
@@ -48,7 +68,21 @@
                 class="color-btn"
                 class:active={toolStore.currentColor === color}
                 style="background-color: {color};"
-                onclick={() => toolStore.setColor(color)}
+                onclick={() => {
+                    toolStore.setColor(color);
+                    // Explicitly update if something is selected to ensure order: Update -> Commit
+                    if (
+                        toolStore.selectedAnnotationId &&
+                        tabStore.activeTabId
+                    ) {
+                        tabStore.updateAnnotation(
+                            tabStore.activeTabId,
+                            toolStore.selectedAnnotationId,
+                            { color: color },
+                        );
+                        tabStore.commitHistory(tabStore.activeTabId);
+                    }
+                }}
                 aria-label={color}
             ></button>
         {/each}
@@ -56,7 +90,24 @@
             type="color"
             class="color-picker"
             value={toolStore.currentColor}
-            oninput={(e) => toolStore.setColor(e.currentTarget.value)}
+            oninput={(e) => {
+                const val = e.currentTarget.value;
+                toolStore.setColor(val);
+                // Continuous update for preview
+                if (toolStore.selectedAnnotationId && tabStore.activeTabId) {
+                    tabStore.updateAnnotation(
+                        tabStore.activeTabId,
+                        toolStore.selectedAnnotationId,
+                        { color: val },
+                    );
+                }
+            }}
+            onchange={() => {
+                // Commit on release/close
+                if (toolStore.selectedAnnotationId && tabStore.activeTabId) {
+                    tabStore.commitHistory(tabStore.activeTabId);
+                }
+            }}
         />
     </div>
 
@@ -77,8 +128,30 @@
                 max={toolStore.currentTool === "pixelate" ? 50 : 20}
                 step="1"
                 value={toolStore.currentStrokeWidth}
-                oninput={(e) =>
-                    toolStore.setStrokeWidth(parseInt(e.currentTarget.value))}
+                oninput={(e) => {
+                    const val = parseInt(e.currentTarget.value);
+                    toolStore.setStrokeWidth(val);
+                    // Continuous update for preview
+                    if (
+                        toolStore.selectedAnnotationId &&
+                        tabStore.activeTabId
+                    ) {
+                        tabStore.updateAnnotation(
+                            tabStore.activeTabId,
+                            toolStore.selectedAnnotationId,
+                            { strokeWidth: val },
+                        );
+                    }
+                }}
+                onchange={() => {
+                    // Commit on release
+                    if (
+                        toolStore.selectedAnnotationId &&
+                        tabStore.activeTabId
+                    ) {
+                        tabStore.commitHistory(tabStore.activeTabId);
+                    }
+                }}
                 class="stroke-slider vertical"
             />
         </div>

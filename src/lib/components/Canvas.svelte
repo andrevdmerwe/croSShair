@@ -46,38 +46,6 @@
     } | null>(null);
 
     // Sync slider <-> selected annotation
-    $effect(() => {
-        if (toolStore.selectedAnnotationId) {
-            const ann = tab.annotations.find(
-                (a) => a.id === toolStore.selectedAnnotationId,
-            );
-            if (ann) {
-                // If slider changed by user (we can't easily distinguish source, so we check diff)
-                // But we need to be careful of loops.
-                // Let's assume toolStore.currentStrokeWidth is the "intent" if it changed recently?
-                // Actually, correct flow:
-                // 1. Select Ann -> ToolStore updates
-                // 2. Change Slider -> ToolStore updates -> Ann updates
-
-                // We implement "Change Slider -> Ann Updates" here
-                if (ann.strokeWidth !== toolStore.currentStrokeWidth) {
-                    // Check if we just selected it?
-                    // No, if we just selected it, we want the slider to update.
-                    // But we can't update ToolStore from here easily without causing a loop if we are not careful.
-                    // Let's rely on handleMouseDown to set the initial slider value on selection.
-
-                    // So here we only do Slider -> Ann
-                    // But we need a flag or logic to know "currentStrokeWidth" is fresh.
-                    // Simplified: Always write to annotation.
-                    // But we need to update toolStore on selection FIRST.
-
-                    tabStore.updateAnnotation(tab.id, ann.id, {
-                        strokeWidth: toolStore.currentStrokeWidth,
-                    });
-                }
-            }
-        }
-    });
 
     // Update toolstore when selection changes
     $effect(() => {
@@ -86,12 +54,20 @@
             const ann = tab.annotations.find(
                 (a) => a.id === toolStore.selectedAnnotationId,
             );
-            // Verify tool type matches to avoid setting "pen" width to "pixelate" density if switching tools (but we clear selection on tool switch anyway)
-            if (ann && ann.strokeWidth) {
-                // Use untracked to avoid loop? Svelte 5 handling...
-                // checking value to avoid infinite loop
-                if (toolStore.currentStrokeWidth !== ann.strokeWidth) {
+            if (ann) {
+                // Sync Stroke Width
+                // Verify tool type matches to avoid setting "pen" width to "pixelate" density if switching tools (but we clear selection on tool switch anyway)
+                if (
+                    ann.strokeWidth &&
+                    toolStore.currentStrokeWidth !== ann.strokeWidth
+                ) {
+                    // Use untracked to avoid loop? Svelte 5 handling...
+                    // checking value to avoid infinite loop
                     toolStore.setStrokeWidth(ann.strokeWidth);
+                }
+                // Sync Color
+                if (ann.color && toolStore.currentColor !== ann.color) {
+                    toolStore.setColor(ann.color);
                 }
             }
         }
@@ -607,11 +583,8 @@
     function handleMouseDown(e: MouseEvent) {
         const { x, y } = getCanvasCoords(e);
 
-        // Check for resize handle hit first
-        if (
-            toolStore.currentTool === "select" &&
-            toolStore.selectedAnnotationId
-        ) {
+        // 1. Check for Resize Handle Hit (on selected object)
+        if (toolStore.selectedAnnotationId) {
             const handle = hitTestHandle(x, y);
             if (handle) {
                 isResizing = true;
@@ -635,50 +608,66 @@
             }
         }
 
-        if (toolStore.currentTool === "select") {
-            const hit = findAnnotationAt(x, y);
+        // 2. Check for Object Hit (Global Selection)
+        // We prefer selecting an object over drawing, unless we are maybe in a 'forcing' mode (not spec'd).
+        const hit = findAnnotationAt(x, y);
+        if (hit) {
+            // Clicked on an object
+            if (toolStore.selectedAnnotationId !== hit.id) {
+                // PRE-SYNC: Update tool properties to match object BEFORE selection
+                // This prevents the "Update Annotation" effect from seeing a mismatch
+                // and overwriting the object's style with the previous tool style.
+                if (hit.color) toolStore.setColor(hit.color);
+                if (hit.strokeWidth) toolStore.setStrokeWidth(hit.strokeWidth);
 
-            if (hit) {
-                // If clicking a different annotation, select it
-                if (toolStore.selectedAnnotationId !== hit.id) {
-                    toolStore.selectAnnotation(hit.id);
-                }
-
-                potentialDrag = true; // Wait for move to confirm drag
-                dragStartX = x;
-                dragStartY = y;
-                dragAnnotationStartX = hit.x;
-                dragAnnotationStartY = hit.y;
-            } else {
-                // Clicked on empty space - clear selection
-                toolStore.clearSelection();
+                toolStore.selectAnnotation(hit.id);
             }
-        } else {
-            // Start drawing
-            isDrawing = true;
-            const id = crypto.randomUUID();
 
-            // Initial shape configuration
+            // Initiate Drag
+            potentialDrag = true;
+            dragStartX = x;
+            dragStartY = y;
+            dragAnnotationStartX = hit.x;
+            dragAnnotationStartY = hit.y;
+            return;
+        }
+
+        // 3. No Hit - Clicked Empty Space
+        // Deselect if we had a selection
+        if (toolStore.selectedAnnotationId) {
+            toolStore.clearSelection();
+            // If we just clicked to deselect, do we also start drawing?
+            // "Clicking on empty canvas space should deselect the current selection."
+            // "Tool selection should only affect object creation behavior"
+            // Usually, clicking empty space starts drawing immediately.
+            // Let's proceed to drawing.
+        }
+
+        // 4. Start Drawing (if tool is not 'select')
+        if (toolStore.currentTool !== "select") {
+            isDrawing = true;
+            dragStartX = x;
+            dragStartY = y;
+
+            const id = crypto.randomUUID();
             drawingAnnotation = {
                 id,
                 type: toolStore.currentTool as any,
                 x,
                 y,
-                color: toolStore.currentColor,
-                strokeWidth: toolStore.currentStrokeWidth,
                 width: 0,
                 height: 0,
+                color: toolStore.currentColor, // Use store color
+                strokeWidth: toolStore.currentStrokeWidth, // Use store width
                 data: {},
             };
 
-            // Tool specific initialization
+            // Initialize specific tool data
             if (
                 toolStore.currentTool === "pen" ||
                 toolStore.currentTool === "highlighter"
             ) {
                 drawingAnnotation.data = { points: [{ x, y }] };
-                drawingAnnotation.width = 0;
-                drawingAnnotation.height = 0;
             } else if (
                 toolStore.currentTool === "line" ||
                 toolStore.currentTool === "arrow"
@@ -698,13 +687,15 @@
                         ? Math.max(...existingSteps) + 1
                         : 1;
 
-                drawingAnnotation.data = { number: nextNum };
-                drawingAnnotation.width = 30; // 2 * radius (15)
+                drawingAnnotation.data = {
+                    number: nextNum,
+                    pointerX: x, // Default pointer straight down or center?
+                    pointerY: y + 25, //
+                };
+                // Initial size for circle
+                drawingAnnotation.width = 30;
                 drawingAnnotation.height = 30;
             }
-
-            toolStore.clearSelection();
-            renderOverlay();
         }
     }
 
