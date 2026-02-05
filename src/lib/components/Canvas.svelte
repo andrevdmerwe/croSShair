@@ -16,6 +16,272 @@
     let baseCtx: CanvasRenderingContext2D | null = null;
     let overlayCtx: CanvasRenderingContext2D | null = null;
 
+    export async function exportImage(): Promise<string> {
+        if (!imageLoaded) throw new Error("Image not loaded");
+
+        // Create offscreen canvas at full resolution
+        const offCanvas = document.createElement("canvas");
+        offCanvas.width = image.width;
+        offCanvas.height = image.height;
+        const ctx = offCanvas.getContext("2d");
+
+        if (!ctx) throw new Error("Failed to create context");
+
+        // 1. Draw Base Image
+        ctx.drawImage(image, 0, 0);
+
+        // 2. Draw Annotations (re-use renderAnnotation logic but on this context)
+        tab.annotations.forEach((ann) => renderAnnotationOnContext(ctx, ann));
+
+        return offCanvas.toDataURL("image/png");
+    }
+
+    // Refactor renderAnnotation to helper that takes context
+    function renderAnnotationOnContext(
+        ctx: CanvasRenderingContext2D,
+        ann: Annotation,
+    ) {
+        ctx.save();
+        ctx.strokeStyle = ann.color;
+        ctx.lineWidth = ann.strokeWidth;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        switch (ann.type) {
+            case "pen":
+            case "highlighter":
+                if (ann.data?.points && ann.data.points.length > 0) {
+                    if (ann.type === "highlighter") {
+                        ctx.globalAlpha = 0.5;
+                    }
+                    ctx.beginPath();
+                    ctx.moveTo(ann.data.points[0].x, ann.data.points[0].y);
+                    for (let i = 1; i < ann.data.points.length; i++) {
+                        ctx.lineTo(ann.data.points[i].x, ann.data.points[i].y);
+                    }
+                    ctx.stroke();
+                    ctx.globalAlpha = 1.0;
+                }
+                break;
+
+            case "rectangle":
+                if (ann.width !== undefined && ann.height !== undefined) {
+                    ctx.strokeRect(ann.x, ann.y, ann.width, ann.height);
+                }
+                break;
+
+            case "ellipse":
+                if (ann.width !== undefined && ann.height !== undefined) {
+                    ctx.beginPath();
+                    const radiusX = Math.abs(ann.width / 2);
+                    const radiusY = Math.abs(ann.height / 2);
+                    const centerX = ann.x + ann.width / 2;
+                    const centerY = ann.y + ann.height / 2;
+
+                    if (radiusX > 0 && radiusY > 0) {
+                        ctx.ellipse(
+                            centerX,
+                            centerY,
+                            radiusX,
+                            radiusY,
+                            0,
+                            0,
+                            2 * Math.PI,
+                        );
+                        ctx.stroke();
+                    }
+                }
+                break;
+
+            case "step":
+                {
+                    const radius = 15;
+                    const pointerX = ann.data?.pointerX;
+                    const pointerY = ann.data?.pointerY;
+
+                    ctx.fillStyle = ann.color;
+                    ctx.strokeStyle = ann.color;
+
+                    if (pointerX !== undefined && pointerY !== undefined) {
+                        const dx = pointerX - ann.x;
+                        const dy = pointerY - ann.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        if (dist > radius) {
+                            const angle = Math.atan2(dy, dx);
+                            const alpha = Math.PI / 2;
+                            const p1x =
+                                ann.x + radius * Math.cos(angle + alpha);
+                            const p1y =
+                                ann.y + radius * Math.sin(angle + alpha);
+                            const p2x =
+                                ann.x + radius * Math.cos(angle - alpha);
+                            const p2y =
+                                ann.y + radius * Math.sin(angle - alpha);
+
+                            ctx.beginPath();
+                            ctx.moveTo(pointerX, pointerY);
+                            ctx.lineTo(p1x, p1y);
+                            ctx.lineTo(p2x, p2y);
+                            ctx.closePath();
+                            ctx.fill();
+                            ctx.stroke();
+                        }
+                    }
+
+                    ctx.beginPath();
+                    ctx.arc(ann.x, ann.y, radius, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.fillStyle = "#ffffff";
+                    ctx.font = "bold 16px sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText(String(ann.data?.number || "?"), ann.x, ann.y);
+                }
+                break;
+
+            case "pixelate":
+                // Pixelate is tricky because it relies on sampling the base image.
+                // Since 'ctx' here is a fresh canvas with base image already drawn,
+                // we can just use the same pixelation logic but targeting itself?
+                // Actually, the original implementation samples 'baseCanvas'.
+                // We should pass baseCanvas or just rely on 'image' being the source.
+                if (
+                    ann.width !== undefined &&
+                    ann.height !== undefined &&
+                    Math.abs(ann.width) > 0 &&
+                    Math.abs(ann.height) > 0
+                ) {
+                    const x = ann.width < 0 ? ann.x + ann.width : ann.x;
+                    const y = ann.height < 0 ? ann.y + ann.height : ann.y;
+                    const w = Math.abs(ann.width);
+                    const h = Math.abs(ann.height);
+
+                    ctx.beginPath();
+                    ctx.rect(x, y, w, h);
+                    ctx.save();
+                    ctx.clip();
+
+                    // Pixelation logic
+                    const blockSize = Math.max(1, ann.strokeWidth || 10);
+                    const sw = Math.floor(w / blockSize);
+                    const sh = Math.floor(h / blockSize);
+                    const safeSw = Math.max(1, sw);
+                    const safeSh = Math.max(1, sh);
+
+                    // Draw image scaled down then up
+                    ctx.imageSmoothingEnabled = false;
+                    // We use 'image' as source which is available in scope
+                    // The trick is draw small to offscreen then draw back large.
+                    // Since we don't want to create another temp canvas if possible...
+                    // Let's create temp canvas like original code
+                    const tempCanvas = document.createElement("canvas");
+                    tempCanvas.width = safeSw;
+                    tempCanvas.height = safeSh;
+                    const tempCtx = tempCanvas.getContext("2d");
+                    if (tempCtx) {
+                        tempCtx.imageSmoothingEnabled = false;
+                        tempCtx.drawImage(
+                            image,
+                            x,
+                            y,
+                            w,
+                            h,
+                            0,
+                            0,
+                            safeSw,
+                            safeSh,
+                        );
+                        ctx.drawImage(
+                            tempCanvas,
+                            0,
+                            0,
+                            safeSw,
+                            safeSh,
+                            x,
+                            y,
+                            w,
+                            h,
+                        );
+                    }
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.restore();
+                }
+                break;
+
+            case "line":
+                if (
+                    ann.data?.endX !== undefined &&
+                    ann.data?.endY !== undefined
+                ) {
+                    ctx.beginPath();
+                    ctx.moveTo(ann.x, ann.y);
+                    ctx.lineTo(ann.data.endX, ann.data.endY);
+                    ctx.stroke();
+                }
+                break;
+
+            case "arrow":
+                if (
+                    ann.data?.endX !== undefined &&
+                    ann.data?.endY !== undefined
+                ) {
+                    const headLength = 15;
+                    const dx = ann.data.endX - ann.x;
+                    const dy = ann.data.endY - ann.y;
+                    const angle = Math.atan2(dy, dx);
+
+                    ctx.beginPath();
+                    ctx.moveTo(ann.x, ann.y);
+                    ctx.lineTo(ann.data.endX, ann.data.endY);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(ann.data.endX, ann.data.endY);
+                    ctx.lineTo(
+                        ann.data.endX -
+                            headLength * Math.cos(angle - Math.PI / 6),
+                        ann.data.endY -
+                            headLength * Math.sin(angle - Math.PI / 6),
+                    );
+                    ctx.moveTo(ann.data.endX, ann.data.endY);
+                    ctx.lineTo(
+                        ann.data.endX -
+                            headLength * Math.cos(angle + Math.PI / 6),
+                        ann.data.endY -
+                            headLength * Math.sin(angle + Math.PI / 6),
+                    );
+                    ctx.stroke();
+                }
+                break;
+
+            case "text":
+                if (ann.data?.text) {
+                    ctx.fillStyle = ann.color;
+                    const fontSize = 14 + ann.strokeWidth * 4;
+                    const lineHeight = fontSize * 1.2;
+                    ctx.font = `${fontSize}px sans-serif`;
+                    ctx.textBaseline = "top";
+
+                    const lines = ann.data.text.split("\n");
+                    lines.forEach((line: string, i: number) => {
+                        ctx.fillText(line, ann.x, ann.y + i * lineHeight);
+                    });
+                }
+                break;
+        }
+        ctx.restore();
+    }
+
+    // This function is called by renderOverlay to draw annotations on the overlay canvas
+    function renderAnnotation(ann: Annotation) {
+        if (overlayCtx) {
+            renderAnnotationOnContext(overlayCtx, ann);
+        }
+    }
+
     let scale = $state(1);
     let image = new Image();
     let imageLoaded = $state(false);
@@ -200,28 +466,34 @@
             bounds.height + padding * 2,
         );
 
-        // Draw resize handles
-        overlayCtx.setLineDash([]);
-        overlayCtx.fillStyle = "#ffffff";
-        overlayCtx.strokeStyle = "#0088ff";
-        const handleSize = 8 / scale;
+        // Draw resize handles ONLY for resizable types (Rect, Ellipse, Crop)
+        // Lines, Arrows, Pens, Steps etc. are currently "move only"
+        const resizableTypes = ["rectangle", "ellipse", "crop"];
+        const isResizable = resizableTypes.includes(ann.type);
 
-        const handles = getResizeHandles(bounds, padding);
+        if (isResizable) {
+            overlayCtx.setLineDash([]);
+            overlayCtx.fillStyle = "#ffffff";
+            overlayCtx.strokeStyle = "#0088ff";
+            const handleSize = 8 / scale;
 
-        handles.forEach((h) => {
-            overlayCtx!.fillRect(
-                h.x - handleSize / 2,
-                h.y - handleSize / 2,
-                handleSize,
-                handleSize,
-            );
-            overlayCtx!.strokeRect(
-                h.x - handleSize / 2,
-                h.y - handleSize / 2,
-                handleSize,
-                handleSize,
-            );
-        });
+            const handles = getResizeHandles(bounds, padding);
+
+            handles.forEach((h) => {
+                overlayCtx!.fillRect(
+                    h.x - handleSize / 2,
+                    h.y - handleSize / 2,
+                    handleSize,
+                    handleSize,
+                );
+                overlayCtx!.strokeRect(
+                    h.x - handleSize / 2,
+                    h.y - handleSize / 2,
+                    handleSize,
+                    handleSize,
+                );
+            });
+        }
 
         // Special handle for Step Pointer
         if (ann.type === "step" && ann.data?.pointerX !== undefined) {
@@ -273,15 +545,19 @@
 
         const bounds = getAnnotationBounds(ann);
         const padding = 4;
-        const handles = getResizeHandles(bounds, padding);
-        const hitThreshold = 6 / scale; // Pixel radius for hit
 
-        for (const h of handles) {
-            if (
-                Math.abs(x - h.x) < hitThreshold &&
-                Math.abs(y - h.y) < hitThreshold
-            ) {
-                return h.id;
+        const resizableTypes = ["rectangle", "ellipse", "crop"];
+        if (resizableTypes.includes(ann.type)) {
+            const handles = getResizeHandles(bounds, padding);
+            const hitThreshold = 6 / scale; // Pixel radius for hit
+
+            for (const h of handles) {
+                if (
+                    Math.abs(x - h.x) < hitThreshold &&
+                    Math.abs(y - h.y) < hitThreshold
+                ) {
+                    return h.id;
+                }
             }
         }
 
@@ -296,256 +572,6 @@
         }
 
         return null;
-    }
-
-    function renderAnnotation(ann: Annotation) {
-        if (!overlayCtx) return;
-        overlayCtx.save();
-        overlayCtx.strokeStyle = ann.color;
-        overlayCtx.lineWidth = ann.strokeWidth;
-        overlayCtx.lineCap = "round";
-        overlayCtx.lineJoin = "round";
-
-        switch (ann.type) {
-            case "pen":
-            case "highlighter":
-                if (ann.data?.points && ann.data.points.length > 0) {
-                    if (ann.type === "highlighter") {
-                        overlayCtx.globalAlpha = 0.5;
-                    }
-                    overlayCtx.beginPath();
-                    overlayCtx.moveTo(
-                        ann.data.points[0].x,
-                        ann.data.points[0].y,
-                    );
-                    for (let i = 1; i < ann.data.points.length; i++) {
-                        overlayCtx.lineTo(
-                            ann.data.points[i].x,
-                            ann.data.points[i].y,
-                        );
-                    }
-                    overlayCtx.stroke();
-                    overlayCtx.globalAlpha = 1.0;
-                }
-                break;
-
-            case "rectangle":
-                if (ann.width !== undefined && ann.height !== undefined) {
-                    overlayCtx.strokeRect(ann.x, ann.y, ann.width, ann.height);
-                }
-                break;
-
-            case "ellipse":
-                if (ann.width !== undefined && ann.height !== undefined) {
-                    // Ellipse logic handles negative width/height naturally
-                    overlayCtx.beginPath();
-                    const radiusX = Math.abs(ann.width / 2);
-                    const radiusY = Math.abs(ann.height / 2);
-                    const centerX = ann.x + ann.width / 2;
-                    const centerY = ann.y + ann.height / 2;
-
-                    if (radiusX > 0 && radiusY > 0) {
-                        overlayCtx.ellipse(
-                            centerX,
-                            centerY,
-                            radiusX,
-                            radiusY,
-                            0,
-                            0,
-                            2 * Math.PI,
-                        );
-                        overlayCtx.stroke();
-
-                        // Reset line caps for other shapes
-                        overlayCtx.lineCap = "round";
-                        overlayCtx.lineJoin = "round";
-                    }
-                }
-                break;
-
-            case "step":
-                {
-                    const radius = 15;
-                    const pointerX = ann.data?.pointerX;
-                    const pointerY = ann.data?.pointerY;
-
-                    overlayCtx.fillStyle = ann.color;
-                    overlayCtx.strokeStyle = ann.color; // For outline if needed, or matched color
-
-                    // Draw pointer tail if it exists and is far enough
-                    if (pointerX !== undefined && pointerY !== undefined) {
-                        const dx = pointerX - ann.x;
-                        const dy = pointerY - ann.y;
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-
-                        if (dist > radius) {
-                            const angle = Math.atan2(dy, dx);
-                            // Calculate tangent points on the circle
-                            // Actually, let's just use perpendiculars for a "thick" neck
-                            // Or simpler: Triangle from tip to +/- PI/2 at circle
-                            const alpha = Math.PI / 2;
-                            const p1x =
-                                ann.x + radius * Math.cos(angle + alpha);
-                            const p1y =
-                                ann.y + radius * Math.sin(angle + alpha);
-                            const p2x =
-                                ann.x + radius * Math.cos(angle - alpha);
-                            const p2y =
-                                ann.y + radius * Math.sin(angle - alpha);
-
-                            overlayCtx.beginPath();
-                            overlayCtx.moveTo(pointerX, pointerY);
-                            overlayCtx.lineTo(p1x, p1y);
-                            overlayCtx.lineTo(p2x, p2y);
-                            overlayCtx.closePath();
-                            overlayCtx.fill();
-                            overlayCtx.stroke();
-                        }
-                    }
-
-                    overlayCtx.beginPath();
-                    overlayCtx.arc(ann.x, ann.y, radius, 0, 2 * Math.PI);
-                    overlayCtx.fill();
-                    overlayCtx.stroke(); // Border?
-                    // Actually usually step counters don't have borders if filled.
-                    // But previous code had stroke().
-
-                    // Draw Number
-                    overlayCtx.fillStyle = "#ffffff"; // White text
-                    overlayCtx.font = "bold 16px sans-serif";
-                    overlayCtx.textAlign = "center";
-                    overlayCtx.textBaseline = "middle";
-                    overlayCtx.fillText(
-                        String(ann.data?.number || "?"),
-                        ann.x,
-                        ann.y,
-                    );
-                }
-                break;
-
-            case "pixelate":
-                if (
-                    ann.width !== undefined &&
-                    ann.height !== undefined &&
-                    Math.abs(ann.width) > 0 &&
-                    Math.abs(ann.height) > 0
-                ) {
-                    // Normalize bounds
-                    const x = ann.width < 0 ? ann.x + ann.width : ann.x;
-                    const y = ann.height < 0 ? ann.y + ann.height : ann.y;
-                    const w = Math.abs(ann.width);
-                    const h = Math.abs(ann.height);
-
-                    // 1. Clip to the pixelation rect
-                    overlayCtx.beginPath();
-                    overlayCtx.rect(x, y, w, h);
-                    overlayCtx.save();
-                    overlayCtx.clip();
-
-                    // 2. Sample from baseCanvas
-                    if (baseCanvas) {
-                        try {
-                            // strokeWidth acts as "block size"
-                            const blockSize = Math.max(
-                                1,
-                                ann.strokeWidth || 10,
-                            );
-                            const sw = Math.floor(w / blockSize);
-                            const sh = Math.floor(h / blockSize);
-
-                            // Ensure at least 1x1 pixel source
-                            const safeSw = Math.max(1, sw);
-                            const safeSh = Math.max(1, sh);
-
-                            const tempCanvas = document.createElement("canvas");
-                            tempCanvas.width = safeSw;
-                            tempCanvas.height = safeSh;
-                            const tempCtx = tempCanvas.getContext("2d");
-
-                            if (tempCtx) {
-                                tempCtx.imageSmoothingEnabled = false;
-                                tempCtx.drawImage(
-                                    baseCanvas,
-                                    x,
-                                    y,
-                                    w,
-                                    h,
-                                    0,
-                                    0,
-                                    safeSw,
-                                    safeSh,
-                                );
-
-                                overlayCtx.imageSmoothingEnabled = false;
-                                overlayCtx.drawImage(
-                                    tempCanvas,
-                                    0,
-                                    0,
-                                    sw,
-                                    sh,
-                                    x,
-                                    y,
-                                    w,
-                                    h,
-                                );
-                                overlayCtx.imageSmoothingEnabled = true;
-                            }
-                        } catch (e) {
-                            console.error("Pixelation error", e);
-                        }
-                    }
-                    overlayCtx.restore();
-                }
-                break;
-
-            case "line":
-                if (
-                    ann.data?.endX !== undefined &&
-                    ann.data?.endY !== undefined
-                ) {
-                    overlayCtx.beginPath();
-                    overlayCtx.moveTo(ann.x, ann.y);
-                    overlayCtx.lineTo(ann.data.endX, ann.data.endY);
-                    overlayCtx.stroke();
-                }
-                break;
-
-            case "arrow":
-                if (
-                    ann.data?.endX !== undefined &&
-                    ann.data?.endY !== undefined
-                ) {
-                    const headLength = 15;
-                    const dx = ann.data.endX - ann.x;
-                    const dy = ann.data.endY - ann.y;
-                    const angle = Math.atan2(dy, dx);
-
-                    overlayCtx.beginPath();
-                    overlayCtx.moveTo(ann.x, ann.y);
-                    overlayCtx.lineTo(ann.data.endX, ann.data.endY);
-                    overlayCtx.stroke();
-
-                    // Arrowhead
-                    overlayCtx.beginPath();
-                    overlayCtx.moveTo(ann.data.endX, ann.data.endY);
-                    overlayCtx.lineTo(
-                        ann.data.endX -
-                            headLength * Math.cos(angle - Math.PI / 6),
-                        ann.data.endY -
-                            headLength * Math.sin(angle - Math.PI / 6),
-                    );
-                    overlayCtx.moveTo(ann.data.endX, ann.data.endY);
-                    overlayCtx.lineTo(
-                        ann.data.endX -
-                            headLength * Math.cos(angle + Math.PI / 6),
-                        ann.data.endY -
-                            headLength * Math.sin(angle + Math.PI / 6),
-                    );
-                    overlayCtx.stroke();
-                }
-                break;
-        }
-        overlayCtx.restore();
     }
 
     /**
@@ -636,15 +662,17 @@
         // Deselect if we had a selection
         if (toolStore.selectedAnnotationId) {
             toolStore.clearSelection();
-            // If we just clicked to deselect, do we also start drawing?
-            // "Clicking on empty canvas space should deselect the current selection."
-            // "Tool selection should only affect object creation behavior"
-            // Usually, clicking empty space starts drawing immediately.
-            // Let's proceed to drawing.
+            renderOverlay();
         }
 
         // 4. Start Drawing (if tool is not 'select')
         if (toolStore.currentTool !== "select") {
+            // Text Tool Handling
+            if (toolStore.currentTool === "text") {
+                startTextEditing(x, y);
+                return;
+            }
+
             isDrawing = true;
             dragStartX = x;
             dragStartY = y;
@@ -696,6 +724,125 @@
                 drawingAnnotation.width = 30;
                 drawingAnnotation.height = 30;
             }
+        }
+    }
+
+    // Text Editing State
+    let isEditingText = $state(false);
+    let editingTextId = $state<string | null>(null);
+    let textInput: HTMLTextAreaElement | null = null;
+    let textInputX = $state(0);
+    let textInputY = $state(0);
+    let textInputWidth = $state(0);
+    let textInputHeight = $state(0);
+    let textInputValue = $state("");
+    let textInputColor = $state("#ff0000");
+    let textInputFontSize = $state(24);
+
+    function startTextEditing(
+        x: number,
+        y: number,
+        existingId: string | null = null,
+    ) {
+        if (isEditingText) commitTextEditing();
+
+        isEditingText = true;
+        editingTextId = existingId;
+
+        if (existingId) {
+            const ann = tab.annotations.find((a) => a.id === existingId);
+            if (ann) {
+                textInputValue = ann.data?.text || "";
+                textInputX = ann.x;
+                textInputY = ann.y;
+                textInputWidth = ann.width ?? 0;
+                textInputHeight = ann.height ?? 0;
+                textInputColor = ann.color;
+                textInputFontSize = 14 + ann.strokeWidth * 4;
+            }
+        } else {
+            // New text
+            textInputValue = "";
+            textInputX = x;
+            textInputY = y;
+            textInputWidth = 0; // Auto-size will handle it or min-width
+            textInputHeight = 0;
+            textInputColor = toolStore.currentColor;
+            textInputFontSize = 14 + toolStore.currentStrokeWidth * 4;
+        }
+
+        // Focus next tick
+        setTimeout(() => textInput?.focus(), 10);
+
+        // Remove global listener
+        window.removeEventListener("keydown", handleKeyDown);
+    }
+
+    function commitTextEditing() {
+        if (!isEditingText) return;
+
+        // Restore global listener
+        window.addEventListener("keydown", handleKeyDown);
+
+        if (textInputValue.trim()) {
+            // Calculate dimensions based on content
+            const fontSize = textInputFontSize;
+            const lineHeight = fontSize * 1.2;
+            const lines = textInputValue.split("\n");
+            const lineCount = lines.length;
+
+            let maxWidth = 0;
+            if (overlayCtx) {
+                overlayCtx.save();
+                overlayCtx.font = `${fontSize}px sans-serif`;
+                lines.forEach((line) => {
+                    const metrics = overlayCtx!.measureText(line);
+                    maxWidth = Math.max(maxWidth, metrics.width);
+                });
+                overlayCtx.restore();
+            } else {
+                maxWidth =
+                    Math.max(...lines.map((l) => l.length)) * (fontSize * 0.6);
+            }
+
+            const width = Math.ceil(maxWidth);
+            const height = Math.ceil(lineCount * lineHeight);
+
+            if (editingTextId) {
+                // Update existing
+                tabStore.updateAnnotation(tab.id, editingTextId, {
+                    width,
+                    height,
+                    data: { text: textInputValue },
+                });
+            } else {
+                // Create new
+                tabStore.addAnnotation(tab.id, {
+                    id: crypto.randomUUID(),
+                    type: "text",
+                    x: textInputX,
+                    y: textInputY,
+                    width,
+                    height,
+                    color: textInputColor,
+                    strokeWidth: toolStore.currentStrokeWidth,
+                    data: { text: textInputValue },
+                });
+            }
+        } else if (editingTextId) {
+            tabStore.removeAnnotation(tab.id, editingTextId);
+        }
+
+        isEditingText = false;
+        editingTextId = null;
+        renderOverlay();
+    }
+
+    function handleDoubleClick(e: MouseEvent) {
+        const { x, y } = getCanvasCoords(e);
+        const hit = findAnnotationAt(x, y);
+        if (hit && hit.type === "text") {
+            startTextEditing(x, y, hit.id);
         }
     }
 
@@ -952,6 +1099,21 @@
     }
 
     function handleKeyDown(e: KeyboardEvent) {
+        // Ignore if default prevented or editing text
+        if (e.defaultPrevented) return;
+
+        const target = e.target as HTMLElement;
+        if (
+            target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            target.isContentEditable ||
+            target.matches?.("input, textarea")
+        )
+            return;
+
+        // Also check local state as backup
+        if (isEditingText) return;
+
         // Global shortcuts (Undo/Redo)
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
             e.preventDefault();
@@ -1011,8 +1173,53 @@
             class="layer overlay"
             onmousedown={handleMouseDown}
             onmousemove={handleMouseMove}
+            ondblclick={handleDoubleClick}
             tabindex="0"
         ></canvas>
+        {#if isEditingText}
+            <textarea
+                bind:this={textInput}
+                bind:value={textInputValue}
+                onblur={commitTextEditing}
+                onkeydown={(e) => {
+                    e.stopPropagation(); // Stop global shortcuts (Undo, Delete, etc.)
+                    if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        commitTextEditing();
+                    }
+                    if (e.key === "Escape") {
+                        isEditingText = false;
+                        editingTextId = null;
+                        renderOverlay();
+                    }
+                }}
+                style="
+                    position: absolute;
+                    left: {textInputX * scale}px;
+                    top: {textInputY * scale}px;
+                    font-size: {textInputFontSize * scale}px;
+                    line-height: 1.2;
+                    color: {textInputColor};
+                    font-family: sans-serif;
+                    background: rgba(255, 255, 255, 0.8);
+                    border: 1px dashed #0088ff;
+                    padding: 0;
+                    margin: 0;
+                    outline: none;
+                    min-width: 100px;
+                    min-height: 1.2em;
+                    width: {textInputWidth
+                    ? textInputWidth * scale + 'px'
+                    : 'auto'};
+                    height: {textInputHeight
+                    ? textInputHeight * scale + 'px'
+                    : 'auto'};
+                    z-index: 100;
+                    resize: none;
+                    overflow: hidden;
+                "
+            ></textarea>
+        {/if}
     </div>
 </div>
 

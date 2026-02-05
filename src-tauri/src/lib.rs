@@ -1,9 +1,8 @@
 mod capture;
 mod config;
+mod export;
 
-use capture::{
-    capture_screenshot, check_dependencies, copy_file_to_clipboard, CaptureResult, DependencyStatus,
-};
+use capture::{capture_screenshot, check_dependencies, CaptureResult, DependencyStatus};
 use config::{get_config, get_default_config, save_config, AppConfig};
 use std::path::PathBuf;
 use tauri::{Emitter, Manager};
@@ -78,12 +77,6 @@ fn take_screenshot(save_path: Option<String>) -> CaptureResult {
 }
 
 #[tauri::command]
-fn copy_image_to_clipboard(file_path: String) -> Result<(), String> {
-    let path = PathBuf::from(file_path);
-    copy_file_to_clipboard(&path).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 fn check_file_exists(path: String) -> bool {
     let exists = std::path::Path::new(&path).exists();
     println!("Frontend requested check for '{}': {}", path, exists);
@@ -135,7 +128,8 @@ pub fn run() {
             get_defaults,
             check_cli_dependencies,
             take_screenshot,
-            copy_image_to_clipboard,
+            export::save_image,
+            export::copy_image_to_clipboard,
             check_file_exists,
             read_image_base64
         ])

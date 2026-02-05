@@ -10,6 +10,7 @@
         // Select tool removed as per request
         { id: "pen", label: "Pen", icon: "✎" },
         { id: "highlighter", label: "Highlighter", icon: "🖊" },
+        { id: "text", label: "Text", icon: "T" },
         { id: "rectangle", label: "Rectangle", icon: "☐" },
         { id: "ellipse", label: "Ellipse", icon: "◯" },
         { id: "line", label: "Line", icon: "／" },
@@ -22,7 +23,11 @@
     let colors = $derived(settingsStore.settings.toolbarPalette);
     let showSettings = $state(false);
 
-    let { onCapture } = $props<{ onCapture?: () => void }>();
+    let { onCapture, onSave, onCopy } = $props<{
+        onCapture?: () => void;
+        onSave?: () => void;
+        onCopy?: () => void;
+    }>();
 
     onMount(() => {
         // Initialize tool defaults from settings on startup
@@ -58,6 +63,39 @@
             title="New Screenshot"
         >
             <span class="icon">📷</span>
+        </button>
+
+        <div class="divider"></div>
+
+        <button class="tool-btn" onclick={() => onSave?.()} title="Save Image">
+            <span class="icon">💾</span>
+        </button>
+
+        <button
+            class="tool-btn"
+            onclick={() => onCopy?.()}
+            title="Copy to Clipboard"
+        >
+            <span class="icon">📋</span>
+        </button>
+
+        <div class="divider"></div>
+
+        <button
+            class="tool-btn"
+            onclick={() =>
+                tabStore.activeTabId && tabStore.undo(tabStore.activeTabId)}
+            title="Undo (Ctrl+Z)"
+        >
+            <span class="icon">↩</span>
+        </button>
+        <button
+            class="tool-btn"
+            onclick={() =>
+                tabStore.activeTabId && tabStore.redo(tabStore.activeTabId)}
+            title="Redo (Ctrl+Y)"
+        >
+            <span class="icon">↪</span>
         </button>
     </div>
 

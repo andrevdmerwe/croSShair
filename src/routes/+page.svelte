@@ -1,6 +1,7 @@
 <script lang="ts">
   import { listen } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
+  import { save } from "@tauri-apps/plugin-dialog";
   import { onMount } from "svelte";
 
   import { tabStore } from "$lib/stores/tabs.svelte";
@@ -12,6 +13,8 @@
   import ToolPalette from "$lib/components/ToolPalette.svelte";
   import Canvas from "$lib/components/Canvas.svelte";
   import type { TabData, Annotation } from "$lib/types";
+
+  let currentCanvas: Canvas | undefined = $state();
 
   async function handleCapture() {
     try {
@@ -48,6 +51,43 @@
     }
   }
 
+  async function handleSave() {
+    if (!currentCanvas || !tabStore.activeTabId) return;
+
+    try {
+      const base64 = await currentCanvas.exportImage();
+      
+      const filePath = await save({
+        filters: [{
+          name: 'Image',
+          extensions: ['png']
+        }],
+        defaultPath: 'screenshot_annotated.png',
+      });
+
+      if (filePath) {
+        await invoke("save_image", { base64Data: base64, filePath });
+        toastStore.add("success", "Image saved successfully");
+      }
+    } catch (e) {
+      console.error("Save failed:", e);
+      toastStore.add("error", `Failed to save image: ${e}`);
+    }
+  }
+
+  async function handleCopy() {
+    if (!currentCanvas || !tabStore.activeTabId) return;
+
+    try {
+      const base64 = await currentCanvas.exportImage();
+      await invoke("copy_image_to_clipboard", { base64Data: base64 });
+      toastStore.add("success", "Image copied to clipboard");
+    } catch (e) {
+      console.error("Copy failed:", e);
+      toastStore.add("error", `Failed to copy to clipboard: ${e}`);
+    }
+  }
+
   onMount(() => {
     // Listen for CLI-triggered captures
     const unlisten = listen("capture-region-request", () => {
@@ -73,7 +113,11 @@
   <div class="content-area">
     <div class="sidebar">
       <div class="sidebar">
-        <ToolPalette onCapture={handleCapture} />
+        <ToolPalette 
+            onCapture={handleCapture} 
+            onSave={handleSave} 
+            onCopy={handleCopy} 
+        />
       </div>
     </div>
     <div class="canvas-viewport">
@@ -82,7 +126,10 @@
       {:else}
         {#key tabStore.activeTabId}
           {#if tabStore.getTab(tabStore.activeTabId || "")}
-            <Canvas tab={tabStore.getTab(tabStore.activeTabId || "")!} />
+            <Canvas 
+                bind:this={currentCanvas}
+                tab={tabStore.getTab(tabStore.activeTabId || "")!} 
+            />
           {/if}
         {/key}
       {/if}
