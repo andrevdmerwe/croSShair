@@ -1,8 +1,9 @@
+use arboard::Clipboard;
 use base64::{engine::general_purpose, Engine as _};
+use image::load_from_memory;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
 
 /// Save a Base64 encoded image to disk
 #[tauri::command]
@@ -26,7 +27,7 @@ pub fn save_image(base64_data: String, file_path: String) -> Result<String, Stri
     Ok(file_path)
 }
 
-/// Copy a Base64 encoded image to clipboard using wl-copy
+/// Copy a Base64 encoded image to clipboard using arboard
 #[tauri::command]
 pub fn copy_image_to_clipboard(base64_data: String) -> Result<(), String> {
     // 1. Decode Base64
@@ -38,30 +39,25 @@ pub fn copy_image_to_clipboard(base64_data: String) -> Result<(), String> {
         .decode(data)
         .map_err(|e| format!("Failed to decode base64: {}", e))?;
 
-    // 2. Pipe to wl-copy
-    // echo <bytes> | wl-copy -t image/png
-    // Note: echoing binary data in shell is tricky. Better to spawn process and write to stdin.
+    // 2. Load image to get raw pixels (RGBA)
+    let img =
+        load_from_memory(&bytes).map_err(|e| format!("Failed to load image from memory: {}", e))?;
 
-    let mut child = Command::new("wl-copy")
-        .arg("-t")
-        .arg("image/png")
-        .stdin(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Failed to spawn wl-copy: {}. Is it installed?", e))?;
+    let rgba8 = img.into_rgba8();
+    let (width, height) = rgba8.dimensions();
+    let image_data = arboard::ImageData {
+        width: width as usize,
+        height: height as usize,
+        bytes: std::borrow::Cow::Borrowed(rgba8.as_raw()),
+    };
 
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(&bytes)
-            .map_err(|e| format!("Failed to write to wl-copy stdin: {}", e))?;
-    }
+    // 3. Set to clipboard
+    let mut clipboard =
+        Clipboard::new().map_err(|e| format!("Failed to initialize clipboard: {}", e))?;
 
-    let status = child
-        .wait()
-        .map_err(|e| format!("Failed to wait for wl-copy: {}", e))?;
+    clipboard
+        .set_image(image_data)
+        .map_err(|e| format!("Failed to set image to clipboard: {}", e))?;
 
-    if status.success() {
-        Ok(())
-    } else {
-        Err("wl-copy failed (non-zero exit code)".to_string())
-    }
+    Ok(())
 }

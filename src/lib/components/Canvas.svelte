@@ -849,6 +849,32 @@
     function handleMouseMove(e: MouseEvent) {
         const { x, y } = getCanvasCoords(e);
 
+        // Update cursor based on hover
+        if (!isDrawing && !isDragging && !isResizing) {
+            const handle = hitTestHandle(x, y);
+            if (handle) {
+                const cursorMap: Record<string, string> = {
+                    n: "ns-resize",
+                    s: "ns-resize",
+                    e: "ew-resize",
+                    w: "ew-resize",
+                    nw: "nwse-resize",
+                    se: "nwse-resize",
+                    ne: "nesw-resize",
+                    sw: "nesw-resize",
+                    pointer: "grab",
+                };
+                overlayCanvas.style.cursor = cursorMap[handle] || "default";
+            } else if (findAnnotationAt(x, y)) {
+                overlayCanvas.style.cursor = "move";
+            } else {
+                overlayCanvas.style.cursor =
+                    toolStore.currentTool === "select"
+                        ? "default"
+                        : "crosshair";
+            }
+        }
+
         if (
             isResizing &&
             toolStore.selectedAnnotationId &&
