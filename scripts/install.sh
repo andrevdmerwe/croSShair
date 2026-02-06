@@ -22,8 +22,6 @@ npm run tauri build
 
 echo "✅ Build Complete!"
 echo "   Release artifacts are located at:"
-echo "   - src-tauri/target/release/bundle/deb/"
-echo "   - src-tauri/target/release/bundle/appimage/"
 echo "   - src-tauri/target/release/crosshair (binary)"
 
 echo ""

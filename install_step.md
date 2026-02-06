@@ -49,7 +49,6 @@ npm install
 npm run tauri build
 ```
 The built binary/bundle will be located in:
-- `src-tauri/target/release/bundle/appimage/` (AppImage)
 - `src-tauri/target/release/crosshair` (Raw binary)
 
 ### 3. Install
