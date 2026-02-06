@@ -161,11 +161,22 @@
   }
 
   async function handleCopy() {
-    if (!currentCanvas || !tabStore.activeTabId) return;
+    console.log("[DEBUG] handleCopy called", {
+      currentCanvas: !!currentCanvas,
+      activeTabId: tabStore.activeTabId,
+    });
+    if (!currentCanvas || !tabStore.activeTabId) {
+      console.log("[DEBUG] handleCopy early return - no canvas or tab");
+      return;
+    }
 
     try {
+      console.log("[DEBUG] Exporting image...");
       const base64 = await currentCanvas.exportImage();
+      console.log("[DEBUG] Image exported, base64 length:", base64.length);
+      console.log("[DEBUG] Calling copy_image_to_clipboard...");
       await invoke("copy_image_to_clipboard", { base64Data: base64 });
+      console.log("[DEBUG] Copy successful!");
       toastStore.add("success", "Image copied to clipboard");
     } catch (e) {
       console.error("Copy failed:", e);
