@@ -236,15 +236,27 @@
     .palette {
         display: flex;
         flex-direction: column;
-        background: #2a2a2a;
+        background: var(--bg-glass);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px); /* Safari support */
         padding: 8px;
-        border-right: 1px solid #444;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        box-shadow: var(--shadow-lg);
         gap: 16px;
         width: 48px;
         align-items: center;
         user-select: none;
-        height: 100%; /* Ensure full height */
-        overflow-y: auto; /* Scroll if needed on small screens */
+        height: auto; /* Allow auto height */
+        max-height: 90vh; /* Prevent overflow */
+        overflow-y: auto;
+
+        /* Floating positioning */
+        position: fixed;
+        left: 16px;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 100;
     }
 
     .section {
@@ -258,10 +270,10 @@
     .tool-btn {
         width: 32px;
         height: 32px;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         border: 1px solid transparent;
         background: transparent;
-        color: #ccc;
+        color: var(--text-muted);
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -271,19 +283,20 @@
     }
 
     .tool-btn:hover {
-        background: #444;
+        background: var(--bg-secondary);
+        color: var(--text-main);
     }
 
     .tool-btn.active {
-        background: #4a90e2;
-        color: white;
-        border-color: #357abd;
+        background: var(--accent);
+        color: var(--bg-primary); /* Contrast against accent */
+        border-color: transparent;
     }
 
     .divider {
         height: 1px;
         width: 100%;
-        background: #444;
+        background: var(--border);
         flex-shrink: 0;
     }
 
@@ -291,18 +304,20 @@
         width: 24px;
         height: 24px;
         border-radius: 50%;
-        border: 2px solid transparent;
+        border: 2px solid var(--border); /* Subtle border for colors */
         cursor: pointer;
         padding: 0;
+        transition: transform 0.2s;
     }
 
     .color-btn:hover {
         transform: scale(1.1);
+        border-color: var(--text-main);
     }
 
     .color-btn.active {
-        border-color: white;
-        box-shadow: 0 0 0 2px #4a90e2;
+        border-color: var(--text-main);
+        box-shadow: 0 0 0 2px var(--accent);
     }
 
     .color-picker {
@@ -321,7 +336,7 @@
     }
 
     .stroke-label {
-        color: #888;
+        color: var(--text-muted);
         font-size: 10px;
         text-align: center;
     }
@@ -329,18 +344,29 @@
     .stroke-slider {
         width: 100%;
         cursor: pointer;
+        accent-color: var(--accent); /* Theme awareness for slider */
     }
 
     .stroke-slider.vertical {
         writing-mode: bt-lr; /* IE */
         -webkit-appearance: slider-vertical; /* WebKit */
+        appearance: slider-vertical; /* Standard (if supported) */
         width: 8px;
-        height: 100px; /* Adjust height as needed */
+        height: 100px;
         padding: 0 5px;
     }
 
     /* Settings button specific */
     .section.settings {
-        margin-bottom: 0; /* Keep it tight to top */
+        margin-bottom: 0;
+    }
+
+    /* Scrollbar styling for kit */
+    .palette::-webkit-scrollbar {
+        width: 4px;
+    }
+    .palette::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
     }
 </style>

@@ -28,8 +28,8 @@
         justify-content: center;
         height: 100%;
         width: 100%;
-        background: #f5f5f5;
-        color: #666;
+        background: var(--bg-primary);
+        color: var(--text-muted);
     }
 
     .content {
@@ -40,12 +40,13 @@
     .icon {
         font-size: 48px;
         margin-bottom: 16px;
-        color: #888;
+        color: var(--text-muted);
+        opacity: 0.5;
     }
 
     h2 {
         margin: 0 0 8px 0;
-        color: #333;
+        color: var(--text-main);
         font-weight: 500;
     }
 
@@ -54,20 +55,23 @@
     }
 
     .capture-btn {
-        background: #007bff;
-        color: white;
+        background: var(--accent);
+        color: var(--bg-primary); /* Contrast text on accent */
         border: none;
         padding: 10px 20px;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
         font-size: 15px;
-        font-weight: 500;
+        font-weight: 600;
         cursor: pointer;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        transition: background 0.2s;
+        box-shadow: var(--shadow-sm);
+        transition:
+            opacity 0.2s,
+            transform 0.1s;
     }
 
     .capture-btn:hover {
-        background: #0069d9;
+        opacity: 0.9;
+        transform: translateY(-1px);
     }
 
     .hint {
@@ -77,9 +81,10 @@
     }
 
     .code {
-        background: #e0e0e0;
+        background: var(--bg-secondary);
         padding: 2px 6px;
         border-radius: 3px;
         font-family: monospace;
+        color: var(--text-main);
     }
 </style>

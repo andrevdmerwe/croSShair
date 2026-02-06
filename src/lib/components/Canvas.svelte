@@ -7,6 +7,7 @@
     import { toolStore } from "$lib/stores/tools.svelte";
     import { tabStore } from "$lib/stores/tabs.svelte";
     import { getAnnotationBounds, hitTestAnnotation } from "$lib/utils/hitTest";
+    import { themeStore } from "$lib/stores/theme.svelte";
 
     let { tab } = $props<{ tab: TabData }>();
 
@@ -15,6 +16,30 @@
     let overlayCanvas: HTMLCanvasElement;
     let baseCtx: CanvasRenderingContext2D | null = null;
     let overlayCtx: CanvasRenderingContext2D | null = null;
+
+    // Theme integration for Canvas rendering
+    let accentColor = $state("#0088ff");
+    let handleFillColor = $state("#ffffff");
+
+    $effect(() => {
+        // React to theme changes
+        const _ = themeStore.currentTheme;
+        const __ = themeStore.customOverrides; // Deep dependency handled by svelte 5 state?
+        // Note: customOverrides is a rune, accessing it triggers dependency.
+
+        if (typeof window !== "undefined") {
+            setTimeout(() => {
+                // Small delay to allow CSS to apply?
+                const style = getComputedStyle(document.documentElement);
+                accentColor =
+                    style.getPropertyValue("--accent").trim() || "#0088ff";
+                // Handles usually white or bright, could be text-main
+                handleFillColor =
+                    style.getPropertyValue("--bg-primary").trim() || "#ffffff";
+                renderOverlay();
+            }, 10);
+        }
+    });
 
     export async function exportImage(): Promise<string> {
         if (!imageLoaded) throw new Error("Image not loaded");
@@ -456,7 +481,7 @@
         const padding = 4;
 
         overlayCtx.save();
-        overlayCtx.strokeStyle = "#0088ff";
+        overlayCtx.strokeStyle = accentColor;
         overlayCtx.lineWidth = 2; // Fixed width for selection
         overlayCtx.setLineDash([6, 4]);
         overlayCtx.strokeRect(
@@ -473,8 +498,8 @@
 
         if (isResizable) {
             overlayCtx.setLineDash([]);
-            overlayCtx.fillStyle = "#ffffff";
-            overlayCtx.strokeStyle = "#0088ff";
+            overlayCtx.fillStyle = handleFillColor;
+            overlayCtx.strokeStyle = accentColor;
             const handleSize = 8 / scale;
 
             const handles = getResizeHandles(bounds, padding);
@@ -1227,8 +1252,8 @@
                     line-height: 1.2;
                     color: {textInputColor};
                     font-family: sans-serif;
-                    background: rgba(255, 255, 255, 0.8);
-                    border: 1px dashed #0088ff;
+                    background: var(--bg-glass);
+                    border: 1px dashed var(--accent);
                     padding: 0;
                     margin: 0;
                     outline: none;
@@ -1256,7 +1281,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #333; /* Dark background for canvas area */
+        background: var(--bg-secondary); /* Dark background for canvas area */
         overflow: auto;
     }
 

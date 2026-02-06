@@ -170,14 +170,12 @@
 
   <div class="content-area">
     <div class="sidebar">
-      <div class="sidebar">
-        <ToolPalette
-          onCapture={handleCapture}
-          onSave={handleSave}
-          onSaveAs={handleSaveAs}
-          onCopy={handleCopy}
-        />
-      </div>
+      <ToolPalette
+        onCapture={handleCapture}
+        onSave={handleSave}
+        onSaveAs={handleSaveAs}
+        onCopy={handleCopy}
+      />
     </div>
     <div class="canvas-viewport">
       {#if tabStore.tabs.length === 0}
@@ -199,15 +197,7 @@
 </main>
 
 <style>
-  :global(body) {
-    margin: 0;
-    padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-      Helvetica, Arial, sans-serif;
-    overflow: hidden;
-    height: 100vh;
-    background: #f0f0f0;
-  }
+  /* Global body styles moved to src/theme.css */
 
   .app-container {
     display: flex;
@@ -216,14 +206,16 @@
   }
 
   .header {
-    background: #e0e0e0;
+    background: var(--bg-secondary);
+    -webkit-app-region: drag; /* Electron/Tauri standard for drag */
+    /* data-tauri-drag-region on inner element for tauri v2 usually */
   }
 
   .content-area {
     flex: 1;
     position: relative;
     overflow: hidden;
-    background: #333;
+    background: var(--bg-primary);
     display: flex;
     flex-direction: row;
   }

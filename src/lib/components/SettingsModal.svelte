@@ -3,6 +3,7 @@
         settingsStore,
         DEFAULT_SETTINGS,
     } from "$lib/stores/settings.svelte";
+    import { themeStore, THEMES } from "$lib/stores/theme.svelte";
     import { invoke } from "@tauri-apps/api/core";
     import { open } from "@tauri-apps/plugin-dialog";
 
@@ -45,6 +46,80 @@
         </div>
 
         <div class="modal-body">
+            <!-- Appearance Section -->
+            <section>
+                <h3>Appearance</h3>
+
+                <div class="setting-row">
+                    <label for="theme-select">Theme</label>
+                    <select
+                        id="theme-select"
+                        value={themeStore.currentTheme}
+                        onchange={(e) =>
+                            themeStore.setTheme(e.currentTarget.value)}
+                    >
+                        {#each THEMES as theme}
+                            <option value={theme.value}>{theme.label}</option>
+                        {/each}
+                    </select>
+                </div>
+
+                <!-- Custom Overrides -->
+                <div class="setting-group">
+                    <label>Theme Overrides</label>
+                    <div class="color-overrides">
+                        <div class="color-field">
+                            <span>Accent</span>
+                            <input
+                                type="color"
+                                value={themeStore.customOverrides["accent"] ||
+                                    ""}
+                                oninput={(e) =>
+                                    themeStore.updateOverride(
+                                        "accent",
+                                        e.currentTarget.value,
+                                    )}
+                            />
+                            {#if themeStore.customOverrides["accent"]}
+                                <button
+                                    class="reset-btn"
+                                    onclick={() =>
+                                        themeStore.updateOverride("accent", "")}
+                                    title="Reset">↺</button
+                                >
+                            {/if}
+                        </div>
+                        <div class="color-field">
+                            <span>Background</span>
+                            <input
+                                type="color"
+                                value={themeStore.customOverrides[
+                                    "bg-primary"
+                                ] || ""}
+                                oninput={(e) =>
+                                    themeStore.updateOverride(
+                                        "bg-primary",
+                                        e.currentTarget.value,
+                                    )}
+                            />
+                            {#if themeStore.customOverrides["bg-primary"]}
+                                <button
+                                    class="reset-btn"
+                                    onclick={() =>
+                                        themeStore.updateOverride(
+                                            "bg-primary",
+                                            "",
+                                        )}
+                                    title="Reset">↺</button
+                                >
+                            {/if}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <hr />
+
             <!-- Defaults Section -->
             <section>
                 <h3>Defaults</h3>
@@ -71,18 +146,20 @@
                         >Default Line Width ({settingsStore.settings
                             .defaultStrokeWidth}px)</label
                     >
-                    <input
-                        type="range"
-                        id="default-width"
-                        min="1"
-                        max="20"
-                        value={settingsStore.settings.defaultStrokeWidth}
-                        oninput={(e) =>
-                            settingsStore.updateSetting(
-                                "defaultStrokeWidth",
-                                parseInt(e.currentTarget.value),
-                            )}
-                    />
+                    <div class="range-wrapper">
+                        <input
+                            type="range"
+                            id="default-width"
+                            min="1"
+                            max="20"
+                            value={settingsStore.settings.defaultStrokeWidth}
+                            oninput={(e) =>
+                                settingsStore.updateSetting(
+                                    "defaultStrokeWidth",
+                                    parseInt(e.currentTarget.value),
+                                )}
+                        />
+                    </div>
                 </div>
 
                 <div class="setting-row">
@@ -100,25 +177,6 @@
                         />
                         <span>{settingsStore.settings.defaultColor}</span>
                     </div>
-                </div>
-
-                <div class="setting-row">
-                    <label for="default-density"
-                        >Default Pixel Density ({settingsStore.settings
-                            .defaultPixelDensity})</label
-                    >
-                    <input
-                        type="range"
-                        id="default-density"
-                        min="1"
-                        max="50"
-                        value={settingsStore.settings.defaultPixelDensity}
-                        oninput={(e) =>
-                            settingsStore.updateSetting(
-                                "defaultPixelDensity",
-                                parseInt(e.currentTarget.value),
-                            )}
-                    />
                 </div>
             </section>
 
@@ -187,109 +245,161 @@
     }
 
     .modal-content {
-        background: #2a2a2a;
+        background: var(--bg-primary);
         width: 500px;
         max-width: 90vw;
         max-height: 85vh;
-        border-radius: 8px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-lg);
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        color: #eee;
-        border: 1px solid #444;
+        color: var(--text-main);
+        border: 1px solid var(--border);
     }
 
     .modal-header {
         padding: 16px;
-        border-bottom: 1px solid #444;
+        border-bottom: 1px solid var(--border);
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: #333;
+        background: var(--bg-secondary);
     }
 
     .modal-header h2 {
         margin: 0;
         font-size: 1.2rem;
+        font-weight: 600;
     }
 
     .close-btn {
         background: none;
         border: none;
-        color: #aaa;
+        color: var(--text-muted);
         font-size: 1.5rem;
         cursor: pointer;
         padding: 0 8px;
+        line-height: 1;
+        transition: color 0.2s;
     }
     .close-btn:hover {
-        color: white;
+        color: var(--text-main);
     }
 
     .modal-body {
-        padding: 16px;
+        padding: 20px;
         overflow-y: auto;
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: 20px;
     }
 
     section h3 {
         margin-top: 0;
         font-size: 1rem;
-        color: #4a90e2;
+        color: var(--accent);
         margin-bottom: 12px;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 4px;
+        display: inline-block;
     }
 
     .setting-row {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 8px;
         margin-bottom: 12px;
     }
 
     label {
         font-size: 0.9rem;
-        color: #ccc;
+        color: var(--text-muted);
+        font-weight: 500;
     }
 
     select,
     input[type="text"] {
-        background-color: #1a1a1a;
-        border: 1px solid #444;
-        color: white;
-        padding: 8px;
-        border-radius: 4px;
+        background-color: var(--bg-secondary);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 8px 12px;
+        border-radius: var(--radius-sm);
+        outline: none;
+        transition: border-color 0.2s;
     }
 
-    /* Custom select styling to override system defaults */
+    select:focus,
+    input[type="text"]:focus {
+        border-color: var(--accent);
+    }
+
+    /* Custom select styling */
     select {
         appearance: none;
         -webkit-appearance: none;
-        background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23FFFFFF%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
-        background-repeat: no-repeat;
-        background-position: right 0.7em top 50%;
-        background-size: 0.65em auto;
+        /* Using a simplified arrow or removing it to rely on system if complex image fails */
+        /* Reusing the previous data URI but simpler logic */
         padding-right: 2em;
+        cursor: pointer;
     }
 
     option {
-        background-color: #1a1a1a;
-        color: white;
+        background-color: var(--bg-secondary);
+        color: var(--text-main);
+    }
+
+    .setting-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .color-overrides {
+        display: flex;
+        gap: 16px;
+    }
+
+    .color-field {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+    }
+
+    .reset-btn {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-size: 1.1em;
+        padding: 0 4px;
+    }
+    .reset-btn:hover {
+        color: var(--accent);
     }
 
     .color-picker-wrapper {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 12px;
     }
 
     input[type="color"] {
         background: none;
         border: none;
-        width: 40px;
-        height: 40px;
+        width: 32px;
+        height: 32px;
         cursor: pointer;
+        padding: 0;
+        border-radius: 4px; /* Some browsers support this on wrapper */
+    }
+
+    /* Range slider styling */
+    input[type="range"] {
+        width: 100%;
+        accent-color: var(--accent);
     }
 
     .palette-grid {
@@ -300,10 +410,11 @@
 
     .palette-grid input[type="color"] {
         width: 100%;
-        height: 32px;
-        background: #1a1a1a;
+        height: 36px;
+        background: var(--bg-secondary);
         padding: 2px;
-        border-radius: 4px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
     }
 
     .path-selector {
@@ -313,32 +424,53 @@
 
     .path-selector input {
         flex: 1;
-        color: #888;
+        color: var(--text-muted);
+        /* Read only style */
+        cursor: default;
     }
 
     .browse-btn {
         padding: 8px 16px;
-        background: #444;
-        border: none;
-        color: white;
-        border-radius: 4px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        border-radius: var(--radius-sm);
         cursor: pointer;
+        transition: all 0.2s;
     }
     .browse-btn:hover {
-        background: #555;
+        background: var(
+            --bg-primary
+        ); /* Darker/Lighter depending on theme? Usually hover should be distinct */
+        border-color: var(--accent);
     }
 
     hr {
         border: 0;
-        border-top: 1px solid #444;
+        border-top: 1px solid var(--border);
         width: 100%;
         margin: 8px 0;
     }
 
     .hint {
         font-size: 0.8rem;
-        color: #888;
+        color: var(--text-muted);
         margin-top: -8px;
-        margin-bottom: 8px;
+        margin-bottom: 12px;
+    }
+
+    /* Scrollbar */
+    .modal-body::-webkit-scrollbar {
+        width: 6px;
+    }
+    .modal-body::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .modal-body::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 3px;
+    }
+    .modal-body::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
     }
 </style>
