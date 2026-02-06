@@ -7,7 +7,7 @@ const HIT_THRESHOLD = 8;
  * Test if a point (x, y) hits an annotation
  * @returns true if the point is within/on the annotation
  */
-export function hitTestAnnotation(ann: Annotation, x: number, y: number): boolean {
+export function hitTestAnnotation(ann: Annotation, x: number, y: number, scale: number = 1): boolean {
     switch (ann.type) {
         case 'rectangle':
             return hitTestRectangle(ann, x, y);
@@ -23,6 +23,8 @@ export function hitTestAnnotation(ann: Annotation, x: number, y: number): boolea
             return hitTestRectangle(ann, x, y); // Text uses bounding box
         case 'step':
             return hitTestStep(ann, x, y);
+        case 'pixelate':
+            return hitTestRectangle(ann, x, y);
         default:
             return false;
     }

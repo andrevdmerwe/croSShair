@@ -332,8 +332,13 @@
         y: number;
         width: number;
         height: number;
+        // Raw coordinates before normalization (for lines/arrows)
+        rawX?: number;
+        rawY?: number;
         pointerX?: number;
         pointerY?: number;
+        endX?: number;
+        endY?: number;
     } | null>(null);
 
     // Sync slider <-> selected annotation
@@ -491,9 +496,8 @@
             bounds.height + padding * 2,
         );
 
-        // Draw resize handles ONLY for resizable types (Rect, Ellipse, Crop)
-        // Lines, Arrows, Pens, Steps etc. are currently "move only"
-        const resizableTypes = ["rectangle", "ellipse", "crop"];
+        // Draw resize handles
+        const resizableTypes = ["rectangle", "ellipse", "crop", "pixelate"];
         const isResizable = resizableTypes.includes(ann.type);
 
         if (isResizable) {
@@ -520,8 +524,39 @@
             });
         }
 
+        // Line/Arrow Handles (Start/End)
+        if (ann.type === "line" || ann.type === "arrow") {
+            if (ann.data?.endX !== undefined && ann.data?.endY !== undefined) {
+                overlayCtx.setLineDash([]);
+                overlayCtx.fillStyle = handleFillColor;
+                overlayCtx.strokeStyle = accentColor;
+                const handleSize = 8 / scale;
+
+                const points = [
+                    { x: ann.x, y: ann.y }, // Start
+                    { x: ann.data.endX, y: ann.data.endY }, // End
+                ];
+
+                points.forEach((p) => {
+                    overlayCtx!.fillRect(
+                        p.x - handleSize / 2,
+                        p.y - handleSize / 2,
+                        handleSize,
+                        handleSize,
+                    );
+                    overlayCtx!.strokeRect(
+                        p.x - handleSize / 2,
+                        p.y - handleSize / 2,
+                        handleSize,
+                        handleSize,
+                    );
+                });
+            }
+        }
+
         // Special handle for Step Pointer
         if (ann.type === "step" && ann.data?.pointerX !== undefined) {
+            const handleSize = 8 / scale; // Define here as fallback
             overlayCtx.fillStyle = "#ffff00"; // distinct color for pointer handle
             overlayCtx.fillRect(
                 ann.data.pointerX - handleSize / 2,
@@ -571,7 +606,7 @@
         const bounds = getAnnotationBounds(ann);
         const padding = 4;
 
-        const resizableTypes = ["rectangle", "ellipse", "crop"];
+        const resizableTypes = ["rectangle", "ellipse", "crop", "pixelate"];
         if (resizableTypes.includes(ann.type)) {
             const handles = getResizeHandles(bounds, padding);
             const hitThreshold = 6 / scale; // Pixel radius for hit
@@ -586,8 +621,28 @@
             }
         }
 
+        // Check Line/Arrow handles
+        if (ann.type === "line" || ann.type === "arrow") {
+            const hitThreshold = 6 / scale;
+            if (
+                Math.abs(x - ann.x) < hitThreshold &&
+                Math.abs(y - ann.y) < hitThreshold
+            ) {
+                return "start";
+            }
+            if (ann.data?.endX !== undefined && ann.data?.endY !== undefined) {
+                if (
+                    Math.abs(x - ann.data.endX) < hitThreshold &&
+                    Math.abs(y - ann.data.endY) < hitThreshold
+                ) {
+                    return "end";
+                }
+            }
+        }
+
         // Check pointer handle
         if (ann.type === "step" && ann.data?.pointerX !== undefined) {
+            const hitThreshold = 6 / scale;
             if (
                 Math.abs(x - ann.data.pointerX) < hitThreshold &&
                 Math.abs(y - ann.data.pointerY) < hitThreshold
@@ -644,13 +699,25 @@
                     (a) => a.id === toolStore.selectedAnnotationId,
                 );
                 if (ann) {
+                    // Use getAnnotationBounds to ensure we start effectively normalized
+                    // But we need to be careful: simple X/Y/W/H is what we want for rectangles.
+                    // If we use getAnnotationBounds() we lose the fact that width might be negative in the store.
+                    // BUT for the opposite-side resizing bug, normalizing HERE is exactly what we want.
+                    // We treat the current VISUAL state as the truth for resizing logic.
+                    const bounds = getAnnotationBounds(ann);
+
                     originalResizeRect = {
-                        x: ann.x,
-                        y: ann.y,
-                        width: ann.width || 0,
-                        height: ann.height || 0,
+                        x: bounds.x,
+                        y: bounds.y,
+                        width: bounds.width,
+                        height: bounds.height,
+                        // Store raw coordinates for line resizing which needs exact start/end points
+                        rawX: ann.x,
+                        rawY: ann.y,
                         pointerX: ann.data?.pointerX,
                         pointerY: ann.data?.pointerY,
+                        endX: ann.data?.endX,
+                        endY: ann.data?.endY,
                     };
                     dragStartX = x;
                     dragStartY = y;
@@ -1024,16 +1091,12 @@
                 },
             });
         } else if (ann.type === "step" && ann.data?.pointerX !== undefined) {
-            const offsetX = newX - ann.x;
-            const offsetY = newY - ann.y;
+            // Decoupled movement: Dragging the head (x,y) leaves the pointer tip pinned.
+            // We simply update x/y without applying offset to pointerX/pointerY.
             tabStore.updateAnnotation(tab.id, ann.id, {
                 x: newX,
                 y: newY,
-                data: {
-                    ...ann.data,
-                    pointerX: ann.data.pointerX + offsetX,
-                    pointerY: ann.data.pointerY + offsetY,
-                },
+                // Explicitly do NOT update pointerX/Y
             });
         } else {
             // Simple case: just update x, y
@@ -1092,6 +1155,43 @@
                 newW -= dx;
                 newH -= dy;
                 break;
+
+            case "start":
+                if (
+                    originalResizeRect.rawX !== undefined &&
+                    originalResizeRect.rawY !== undefined
+                ) {
+                    tabStore.updateAnnotation(
+                        tab.id,
+                        toolStore.selectedAnnotationId!,
+                        {
+                            x: originalResizeRect.rawX + dx,
+                            y: originalResizeRect.rawY + dy,
+                        },
+                    );
+                }
+                return;
+
+            case "end":
+                if (
+                    originalResizeRect.endX !== undefined &&
+                    originalResizeRect.endY !== undefined
+                ) {
+                    const ann = tab.annotations.find(
+                        (a) => a.id === toolStore.selectedAnnotationId,
+                    );
+                    if (ann) {
+                        tabStore.updateAnnotation(tab.id, ann.id, {
+                            data: {
+                                ...ann.data,
+                                endX: originalResizeRect.endX + dx,
+                                endY: originalResizeRect.endY + dy,
+                            },
+                        });
+                    }
+                }
+                return;
+
             case "pointer":
                 // Special case: update pointer X/Y relative to original position
                 if (
@@ -1113,6 +1213,40 @@
                     return; // Skip main bounds update
                 }
                 break;
+        }
+
+        if (resizeHandle === "start" || resizeHandle === "end") {
+            // For lines/arrows, we didn't store raw coordinates properly in valid originalResizeRect because of getAnnotationBounds.
+            // But actually, we only need to know "original x" vs "normalized x".
+            // Let's grab the annotation again to be sure? No, bad pattern.
+
+            // Simplest Fix: For "start"/"end", we just want to move that point by dx/dy relative to when we started dragging.
+            // We know `dragStartX/Y`. We know `current x/y`.
+            // `delta = x - dragStartX`.
+            // We need `originalAnnX` and `originalAnnY`.
+            // I'll grab them from `originalResizeRect` assuming I saved them?
+            // I saved `endX/endY`! specific properties.
+            // Resizing lines:
+            // Start Point: ann.x + dx
+            // End Point: ann.data.endX + dx
+
+            // BUT `originalResizeRect.x` is NORMALIZED.
+            // So I can't trust it is `ann.x`.
+
+            // I will make `handleMouseDown` smarter in previous chunk.
+            // I'll update that chunk to store `rawX`, `rawY`.
+            return;
+        }
+
+        // For Rects/Ellipses/Crop:
+        // Normalize negative W/H before saving
+        if (newW < 0) {
+            newX += newW;
+            newW = Math.abs(newW);
+        }
+        if (newH < 0) {
+            newY += newH;
+            newH = Math.abs(newH);
         }
 
         tabStore.updateAnnotation(tab.id, toolStore.selectedAnnotationId!, {
