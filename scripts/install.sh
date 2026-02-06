@@ -43,7 +43,7 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 Type=Application
 Name=croSShair
 Comment=Lightweight screenshot and annotation tool
-Exec=$HOME/.local/bin/crosshair
+Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 $HOME/.local/bin/crosshair
 Icon=crosshair
 Terminal=false
 Categories=Utility;
@@ -52,4 +52,24 @@ EOL
     echo "✅ Installed desktop entry to ~/.local/share/applications/crosshair.desktop"
     
     echo "   Ensure ~/.local/bin is in your PATH."
+
+    echo ""
+    read -p "❓ Do you want crosshair to start automatically on login (minimized to tray)? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        mkdir -p ~/.config/autostart/
+        cat > ~/.config/autostart/crosshair.desktop <<EOL
+[Desktop Entry]
+Type=Application
+Name=croSShair
+Comment=Lightweight screenshot and annotation tool
+Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 $HOME/.local/bin/crosshair
+Icon=crosshair
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true
+Hidden=false
+EOL
+        echo "✅ Autostart enabled. croSShair will start minimized on login."
+    fi
 fi

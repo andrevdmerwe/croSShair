@@ -65,14 +65,23 @@ Or manually:
 
 To take screenshots with `PrintScreen`, you must configure your compositor to launch `croSShair`.
 
-### Hyprland (Common on CachyOS)
+### Hyprland
 Add this to your `~/.config/hypr/hyprland.conf`:
 ```ini
-# Binds PrintScreen to launch croSShair
-bind = , Print, exec, crosshair
+bind = , Print, exec, crosshair capture-region
 ```
 
-### KDE Plasma (Common on CachyOS)
+### Niri
+Add this to your `~/.config/niri/config.kdl`:
+```kdl
+Ctrl+Alt+P hotkey-overlay-title="Screen Capture Region" { spawn "crosshair" "capture-region"; }
+```
+Or to use PrintScreen:
+```kdl
+Print hotkey-overlay-title="Screen Capture Region" { spawn "crosshair" "capture-region"; }
+```
+
+### KDE Plasma
 1. Open **System Settings** > **Shortcuts**.
 2. Click **Add New**.
 3. Command: `crosshair`.
