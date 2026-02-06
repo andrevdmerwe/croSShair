@@ -38,7 +38,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "category": "Graphics",
+    "category": "Utility",
     "shortDescription": "Lightweight screenshot and annotation tool for Wayland",
     "longDescription": "A lightweight screenshot and annotation tool designed for Wayland compositors. Features modern UI, quick editing, and easy sharing."
   }
