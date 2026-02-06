@@ -1,4 +1,5 @@
 import type { Tool } from '../types';
+import { settingsStore } from "./settings.svelte";
 
 class ToolStore {
     /** Currently active tool */
@@ -34,6 +35,15 @@ class ToolStore {
     }
 
     clearSelection() {
+        this.selectedAnnotationId = null;
+    }
+
+    resetToDefaults() {
+        // Use settings from store
+        const settings = settingsStore.settings;
+        this.currentTool = settings.defaultTool as Tool;
+        this.currentColor = settings.defaultColor;
+        this.currentStrokeWidth = settings.defaultStrokeWidth;
         this.selectedAnnotationId = null;
     }
 }

@@ -10,6 +10,9 @@ const HIT_THRESHOLD = 8;
 export function hitTestAnnotation(ann: Annotation, x: number, y: number, scale: number = 1): boolean {
     switch (ann.type) {
         case 'rectangle':
+        case 'highlight':
+        case 'speechBubble':
+        case 'pixelate':
             return hitTestRectangle(ann, x, y);
         case 'ellipse':
             return hitTestEllipse(ann, x, y);
@@ -23,8 +26,6 @@ export function hitTestAnnotation(ann: Annotation, x: number, y: number, scale: 
             return hitTestRectangle(ann, x, y); // Text uses bounding box
         case 'step':
             return hitTestStep(ann, x, y);
-        case 'pixelate':
-            return hitTestRectangle(ann, x, y);
         default:
             return false;
     }

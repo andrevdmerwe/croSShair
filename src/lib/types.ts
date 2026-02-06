@@ -13,6 +13,8 @@ export interface Annotation {
 export type AnnotationType =
     | 'pen'
     | 'highlighter'
+    | 'highlight'
+    | 'speechBubble'
     | 'rectangle'
     | 'ellipse'
     | 'line'

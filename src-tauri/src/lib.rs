@@ -129,6 +129,10 @@ pub fn run() {
             let mut intent = None;
             if args.len() > 1 && args[1] == "capture-region" {
                 intent = Some("capture-region".to_string());
+                // Avoid stealing focus on cold start for capture
+                // Note: tauri.conf.json might set initial focus, but we can try to revert it or managing it here.
+                // However, 'main' window might not be available yet if it's created via config?
+                // Actually app.get_webview_window("main") should work if it's in config.
             }
             app.manage(StartupIntent {
                 action: Mutex::new(intent),
@@ -187,11 +191,13 @@ pub fn run() {
             if args.len() > 1 && args[1] == "capture-region" {
                 // Emit event to frontend to trigger capture
                 let _ = app.emit("capture-region-request", ());
-            }
-            // Focus the main window
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
+                // Do NOT focus the window if we are capturing
+            } else {
+                // Focus the main window for normal activation
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
             }
         }))
         .on_window_event(|window, event| {

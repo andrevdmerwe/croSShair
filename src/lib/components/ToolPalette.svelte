@@ -10,7 +10,9 @@
         // Select tool removed as per request
         { id: "pen", label: "Pen", icon: "✎" },
         { id: "highlighter", label: "Highlighter", icon: "🖊" },
+        { id: "highlight", label: "Highlight", icon: "MARK" },
         { id: "text", label: "Text", icon: "T" },
+        { id: "speechBubble", label: "Speech Bubble", icon: "💬" },
         { id: "rectangle", label: "Rectangle", icon: "☐" },
         { id: "ellipse", label: "Ellipse", icon: "◯" },
         { id: "line", label: "Line", icon: "／" },

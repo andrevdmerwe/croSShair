@@ -1,4 +1,5 @@
 import type { TabData, Annotation } from '../types';
+import { toolStore } from './tools.svelte';
 
 class TabStore {
     tabs = $state<TabData[]>([]);
@@ -28,6 +29,10 @@ class TabStore {
             // If closed active tab, select the one before it, or the new one at that index, or null
             const newIndex = Math.min(index, this.tabs.length - 1);
             this.activeTabId = this.tabs[newIndex]?.id ?? null;
+        }
+
+        if (this.tabs.length === 0) {
+            toolStore.resetToDefaults();
         }
     }
 

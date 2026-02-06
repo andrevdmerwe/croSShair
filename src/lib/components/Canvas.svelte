@@ -56,7 +56,9 @@
         ctx.drawImage(image, 0, 0);
 
         // 2. Draw Annotations (re-use renderAnnotation logic but on this context)
-        tab.annotations.forEach((ann) => renderAnnotationOnContext(ctx, ann));
+        tab.annotations.forEach((ann: Annotation) =>
+            renderAnnotationOnContext(ctx, ann),
+        );
 
         return offCanvas.toDataURL("image/png");
     }
@@ -86,6 +88,20 @@
                     }
                     ctx.stroke();
                     ctx.globalAlpha = 1.0;
+                }
+                break;
+
+            case "highlight":
+                if (ann.width !== undefined && ann.height !== undefined) {
+                    ctx.save();
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillStyle = ann.color;
+                    ctx.fillRect(ann.x, ann.y, ann.width, ann.height);
+                    ctx.restore();
+                    // Optional stroke? Maybe just fill.
+                    // ctx.globalAlpha = 0.5;
+                    // ctx.strokeStyle = ann.color;
+                    // ctx.strokeRect(ann.x, ann.y, ann.width, ann.height);
                 }
                 break;
 
@@ -282,6 +298,118 @@
                 }
                 break;
 
+            case "speechBubble":
+                if (ann.width !== undefined && ann.height !== undefined) {
+                    const x = ann.x;
+                    const y = ann.y;
+                    const w = ann.width;
+                    const h = ann.height;
+
+                    // Normalize for drawing
+                    const nx = w < 0 ? x + w : x;
+                    const ny = h < 0 ? y + h : y;
+                    const nw = Math.abs(w);
+                    const nh = Math.abs(h);
+
+                    // Use selected color for fill, with darker stroke
+                    ctx.fillStyle = ann.color;
+                    // Create a darker shade of the fill color for stroke
+                    // Parse hex color and darken it
+                    const hex = ann.color.replace("#", "");
+                    const r = Math.max(
+                        0,
+                        parseInt(hex.substring(0, 2), 16) - 60,
+                    );
+                    const g = Math.max(
+                        0,
+                        parseInt(hex.substring(2, 4), 16) - 60,
+                    );
+                    const b = Math.max(
+                        0,
+                        parseInt(hex.substring(4, 6), 16) - 60,
+                    );
+                    ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
+                    ctx.lineWidth = 1.5; // Thin border
+
+                    const radiusX = nw / 2;
+                    const radiusY = nh / 2;
+                    const centerX = nx + radiusX;
+                    const centerY = ny + radiusY;
+
+                    // Calculate pointer properties
+                    const hasPointer =
+                        ann.data?.pointerX !== undefined &&
+                        ann.data?.pointerY !== undefined &&
+                        radiusX > 0 &&
+                        radiusY > 0;
+                    const pointerBaseWidth = hasPointer
+                        ? Math.max(8, nw * 0.12)
+                        : 0;
+                    const ellipseBottom = centerY + radiusY;
+                    const pointerX = ann.data?.pointerX ?? centerX;
+                    const pointerY = ann.data?.pointerY ?? ellipseBottom + 30;
+
+                    // Step 1: Draw ellipse (fill and stroke)
+                    if (radiusX > 0 && radiusY > 0) {
+                        ctx.beginPath();
+                        ctx.ellipse(
+                            centerX,
+                            centerY,
+                            radiusX,
+                            radiusY,
+                            0,
+                            0,
+                            2 * Math.PI,
+                        );
+                        ctx.fill();
+                        ctx.stroke();
+                    }
+
+                    // Step 2: Draw pointer fill (overpaints the ellipse stroke at connection)
+                    if (hasPointer) {
+                        ctx.beginPath();
+                        ctx.moveTo(centerX - pointerBaseWidth, ellipseBottom);
+                        ctx.lineTo(pointerX, pointerY);
+                        ctx.lineTo(centerX + pointerBaseWidth, ellipseBottom);
+                        ctx.closePath();
+                        ctx.fill(); // Fill only - this covers the ellipse stroke
+                    }
+
+                    // Step 3: Stroke only the two outer edges of the pointer (not the base)
+                    if (hasPointer) {
+                        ctx.beginPath();
+                        ctx.moveTo(centerX - pointerBaseWidth, ellipseBottom);
+                        ctx.lineTo(pointerX, pointerY);
+                        ctx.lineTo(centerX + pointerBaseWidth, ellipseBottom);
+                        // Don't closePath - we don't want to stroke the base
+                        ctx.stroke();
+                    }
+
+                    // Text (contrasting color)
+                    if (ann.data?.text) {
+                        // Use contrasting text color
+                        ctx.fillStyle = "#ffffff";
+                        const fontSize = 14 + ann.strokeWidth * 4;
+                        const lineHeight = fontSize * 1.2;
+                        ctx.font = `${fontSize}px sans-serif`;
+                        ctx.textAlign = "center";
+                        ctx.textBaseline = "middle";
+
+                        const lines = ann.data.text.split("\n");
+                        const startY =
+                            ny + nh / 2 - ((lines.length - 1) * lineHeight) / 2;
+
+                        lines.forEach((line: string, i: number) => {
+                            ctx.fillText(
+                                line,
+                                nx + nw / 2,
+                                startY + i * lineHeight,
+                            );
+                        });
+                    }
+                }
+                break;
+
             case "text":
                 if (ann.data?.text) {
                     ctx.fillStyle = ann.color;
@@ -348,7 +476,7 @@
         // This effect runs when selectedAnnotationId changes
         if (toolStore.selectedAnnotationId) {
             const ann = tab.annotations.find(
-                (a) => a.id === toolStore.selectedAnnotationId,
+                (a: Annotation) => a.id === toolStore.selectedAnnotationId,
             );
             if (ann) {
                 // Sync Stroke Width
@@ -438,7 +566,7 @@
         const height = image.height * scale;
 
         // Set canvas dimensions
-        [baseCanvas, overlayCanvas].forEach((canvas) => {
+        [baseCanvas, overlayCanvas].forEach((canvas: HTMLCanvasElement) => {
             canvas.width = image.width; // Internal resolution matches original image
             canvas.height = image.height;
             canvas.style.width = `${width}px`; // Display size
@@ -497,7 +625,14 @@
         );
 
         // Draw resize handles
-        const resizableTypes = ["rectangle", "ellipse", "crop", "pixelate"];
+        const resizableTypes = [
+            "rectangle",
+            "ellipse",
+            "crop",
+            "pixelate",
+            "speechBubble",
+            "highlight",
+        ];
         const isResizable = resizableTypes.includes(ann.type);
 
         if (isResizable) {
@@ -554,8 +689,11 @@
             }
         }
 
-        // Special handle for Step Pointer
-        if (ann.type === "step" && ann.data?.pointerX !== undefined) {
+        // Special handle for Step Pointer AND Speech Bubble Pointer
+        if (
+            (ann.type === "step" || ann.type === "speechBubble") &&
+            ann.data?.pointerX !== undefined
+        ) {
             const handleSize = 8 / scale; // Define here as fallback
             overlayCtx.fillStyle = "#ffff00"; // distinct color for pointer handle
             overlayCtx.fillRect(
@@ -599,14 +737,21 @@
     function hitTestHandle(x: number, y: number): string | null {
         if (!toolStore.selectedAnnotationId) return null;
         const ann = tab.annotations.find(
-            (a) => a.id === toolStore.selectedAnnotationId,
+            (a: Annotation) => a.id === toolStore.selectedAnnotationId,
         );
         if (!ann) return null;
 
         const bounds = getAnnotationBounds(ann);
         const padding = 4;
 
-        const resizableTypes = ["rectangle", "ellipse", "crop", "pixelate"];
+        const resizableTypes = [
+            "rectangle",
+            "ellipse",
+            "crop",
+            "pixelate",
+            "speechBubble",
+            "highlight",
+        ];
         if (resizableTypes.includes(ann.type)) {
             const handles = getResizeHandles(bounds, padding);
             const hitThreshold = 6 / scale; // Pixel radius for hit
@@ -641,7 +786,10 @@
         }
 
         // Check pointer handle
-        if (ann.type === "step" && ann.data?.pointerX !== undefined) {
+        if (
+            (ann.type === "step" && ann.data?.pointerX !== undefined) ||
+            (ann.type === "speechBubble" && ann.data?.pointerX !== undefined)
+        ) {
             const hitThreshold = 6 / scale;
             if (
                 Math.abs(x - ann.data.pointerX) < hitThreshold &&
@@ -696,7 +844,7 @@
                 isResizing = true;
                 resizeHandle = handle;
                 const ann = tab.annotations.find(
-                    (a) => a.id === toolStore.selectedAnnotationId,
+                    (a: Annotation) => a.id === toolStore.selectedAnnotationId,
                 );
                 if (ann) {
                     // Use getAnnotationBounds to ensure we start effectively normalized
@@ -739,6 +887,7 @@
                 if (hit.strokeWidth) toolStore.setStrokeWidth(hit.strokeWidth);
 
                 toolStore.selectAnnotation(hit.id);
+                console.log("[DEBUG] Selected annotation:", hit.id, hit.type);
             }
 
             // Initiate Drag
@@ -759,7 +908,11 @@
 
         // 4. Start Drawing (if tool is not 'select')
         if (toolStore.currentTool !== "select") {
-            // Text Tool Handling
+            // Text Tool Handling - and Speech Bubble double click logic?
+            // Actually speech bubble is drawn first, then text edited.
+            // But if we click EXISTING speech bubble? That's handled in hit logic above?
+            // Wait, hit logic selects it. Double click to edit text?
+            // We need double click handler for editing text.
             if (toolStore.currentTool === "text") {
                 startTextEditing(x, y);
                 return;
@@ -793,15 +946,27 @@
                 toolStore.currentTool === "arrow"
             ) {
                 drawingAnnotation.data = { endX: x, endY: y };
+            } else if (toolStore.currentTool === "speechBubble") {
+                // Initialize with default minimum size for visibility
+                const defaultWidth = 80;
+                const defaultHeight = 40;
+                drawingAnnotation.width = defaultWidth;
+                drawingAnnotation.height = defaultHeight;
+                // Initialize pointer below start point
+                drawingAnnotation.data = {
+                    pointerX: x + defaultWidth / 2,
+                    pointerY: y + defaultHeight + 30,
+                    text: "Text",
+                };
             } else if (toolStore.currentTool === "step") {
                 // Dynamic step counting: Max + 1
                 const existingSteps = tab.annotations
                     .filter(
-                        (a) =>
+                        (a: Annotation) =>
                             a.type === "step" &&
                             typeof a.data?.number === "number",
                     )
-                    .map((a) => a.data.number);
+                    .map((a: Annotation) => a.data?.number || 0);
                 const nextNum =
                     existingSteps.length > 0
                         ? Math.max(...existingSteps) + 1
@@ -822,7 +987,7 @@
     // Text Editing State
     let isEditingText = $state(false);
     let editingTextId = $state<string | null>(null);
-    let textInput: HTMLTextAreaElement | null = null;
+    let textInput = $state<HTMLTextAreaElement | null>(null);
     let textInputX = $state(0);
     let textInputY = $state(0);
     let textInputWidth = $state(0);
@@ -842,7 +1007,9 @@
         editingTextId = existingId;
 
         if (existingId) {
-            const ann = tab.annotations.find((a) => a.id === existingId);
+            const ann = tab.annotations.find(
+                (a: Annotation) => a.id === existingId,
+            );
             if (ann) {
                 textInputValue = ann.data?.text || "";
                 textInputX = ann.x;
@@ -871,10 +1038,15 @@
     }
 
     function commitTextEditing() {
+        console.log(
+            "[DEBUG] commitTextEditing called, isEditingText:",
+            isEditingText,
+        );
         if (!isEditingText) return;
 
         // Restore global listener
         window.addEventListener("keydown", handleKeyDown);
+        console.log("[DEBUG] Restored keydown listener");
 
         if (textInputValue.trim()) {
             // Calculate dimensions based on content
@@ -902,11 +1074,23 @@
 
             if (editingTextId) {
                 // Update existing
-                tabStore.updateAnnotation(tab.id, editingTextId, {
-                    width,
-                    height,
-                    data: { text: textInputValue },
-                });
+                const existing = tab.annotations.find(
+                    (a: Annotation) => a.id === editingTextId,
+                );
+                if (existing && existing.type === "speechBubble") {
+                    // For speech bubble, just update text, keep dimensions
+                    tabStore.updateAnnotation(tab.id, editingTextId, {
+                        data: { ...existing.data, text: textInputValue },
+                    });
+                } else {
+                    tabStore.updateAnnotation(tab.id, editingTextId, {
+                        width,
+                        height,
+                        data: { text: textInputValue },
+                    });
+                }
+                // Commit history for text updates
+                tabStore.commitHistory(tab.id);
             } else {
                 // Create new
                 tabStore.addAnnotation(tab.id, {
@@ -927,13 +1111,17 @@
 
         isEditingText = false;
         editingTextId = null;
+        console.log(
+            "[DEBUG] Text editing committed, isEditingText now:",
+            isEditingText,
+        );
         renderOverlay();
     }
 
     function handleDoubleClick(e: MouseEvent) {
         const { x, y } = getCanvasCoords(e);
         const hit = findAnnotationAt(x, y);
-        if (hit && hit.type === "text") {
+        if (hit && (hit.type === "text" || hit.type === "speechBubble")) {
             startTextEditing(x, y, hit.id);
         }
     }
@@ -994,7 +1182,9 @@
             } else if (
                 drawingAnnotation.type === "rectangle" ||
                 drawingAnnotation.type === "ellipse" ||
-                drawingAnnotation.type === "pixelate"
+                drawingAnnotation.type === "highlight" ||
+                drawingAnnotation.type === "pixelate" ||
+                drawingAnnotation.type === "speechBubble"
             ) {
                 drawingAnnotation.width = x - drawingAnnotation.x;
                 drawingAnnotation.height = y - drawingAnnotation.y;
@@ -1090,8 +1280,11 @@
                     endY: newY + endYOffset,
                 },
             });
-        } else if (ann.type === "step" && ann.data?.pointerX !== undefined) {
-            // Decoupled movement: Dragging the head (x,y) leaves the pointer tip pinned.
+        } else if (
+            (ann.type === "step" || ann.type === "speechBubble") &&
+            ann.data?.pointerX !== undefined
+        ) {
+            // Decoupled movement: Dragging the body (x,y) leaves the pointer tip pinned.
             // We simply update x/y without applying offset to pointerX/pointerY.
             tabStore.updateAnnotation(tab.id, ann.id, {
                 x: newX,
@@ -1178,7 +1371,8 @@
                     originalResizeRect.endY !== undefined
                 ) {
                     const ann = tab.annotations.find(
-                        (a) => a.id === toolStore.selectedAnnotationId,
+                        (a: Annotation) =>
+                            a.id === toolStore.selectedAnnotationId,
                     );
                     if (ann) {
                         tabStore.updateAnnotation(tab.id, ann.id, {
@@ -1199,7 +1393,8 @@
                     originalResizeRect.pointerY !== undefined
                 ) {
                     const ann = tab.annotations.find(
-                        (a) => a.id === toolStore.selectedAnnotationId,
+                        (a: Annotation) =>
+                            a.id === toolStore.selectedAnnotationId,
                     );
                     if (ann) {
                         tabStore.updateAnnotation(tab.id, ann.id, {
@@ -1261,7 +1456,14 @@
         if (isDrawing && drawingAnnotation) {
             // Finalize drawing
             // addAnnotation already pushes history
-            tabStore.addAnnotation(tab.id, $state.snapshot(drawingAnnotation));
+            const newAnn = $state.snapshot(drawingAnnotation);
+            tabStore.addAnnotation(tab.id, newAnn);
+
+            // Auto-start editing for speech bubble
+            if (newAnn.type === "speechBubble") {
+                startTextEditing(newAnn.x, newAnn.y, newAnn.id);
+            }
+
             drawingAnnotation = null;
             renderOverlay();
         } else if (isDragging || isResizing) {
@@ -1284,6 +1486,14 @@
     }
 
     function handleKeyDown(e: KeyboardEvent) {
+        console.log(
+            "[DEBUG] handleKeyDown:",
+            e.key,
+            "isEditingText:",
+            isEditingText,
+            "selectedId:",
+            toolStore.selectedAnnotationId,
+        );
         // Ignore if default prevented or editing text
         if (e.defaultPrevented) return;
 
