@@ -152,6 +152,15 @@
       handleCapture();
     });
 
+    // Check for startup intent (cold start args)
+    invoke<string | null>("check_startup_intent")
+      .then((intent) => {
+        if (intent === "capture-region") {
+          handleCapture();
+        }
+      })
+      .catch((e) => console.error("Failed to check startup intent:", e));
+
     return () => {
       unlisten.then((f) => f());
     };

@@ -5,7 +5,12 @@ mod export;
 use capture::{capture_screenshot, check_dependencies, CaptureResult, DependencyStatus};
 use config::{get_config, get_default_config, save_config, AppConfig};
 use std::path::PathBuf;
-use tauri::{Emitter, Manager};
+use std::sync::Mutex;
+use tauri::{Emitter, Manager, State};
+
+struct StartupIntent {
+    action: Mutex<Option<String>>,
+}
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -83,6 +88,12 @@ fn check_file_exists(path: String) -> bool {
     exists
 }
 
+#[tauri::command]
+fn check_startup_intent(state: State<'_, StartupIntent>) -> Option<String> {
+    let mut action = state.action.lock().unwrap();
+    action.take()
+}
+
 use base64::{engine::general_purpose, Engine as _};
 use std::fs::File;
 use std::io::Read;
@@ -113,6 +124,16 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
+            // Handle cold-start arguments
+            let args: Vec<String> = std::env::args().collect();
+            let mut intent = None;
+            if args.len() > 1 && args[1] == "capture-region" {
+                intent = Some("capture-region".to_string());
+            }
+            app.manage(StartupIntent {
+                action: Mutex::new(intent),
+            });
+
             // System Tray Setup
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
@@ -189,7 +210,8 @@ pub fn run() {
             export::save_image,
             export::copy_image_to_clipboard,
             check_file_exists,
-            read_image_base64
+            read_image_base64,
+            check_startup_intent
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
