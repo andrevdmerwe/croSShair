@@ -27,7 +27,11 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "deb",
+      "appimage"
+    ],
+    "identifier": "io.github.crosshair",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -35,7 +39,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "targets": [
+      "deb",
+      "appimage"
+    ],
     "category": "Graphics",
-    "shortDescription": "Lightweight screenshot and annotation tool for Wayland"
+    "shortDescription": "Lightweight screenshot and annotation tool for Wayland",
+    "longDescription": "A lightweight screenshot and annotation tool designed for Wayland compositors. Features modern UI, quick editing, and easy sharing."
   }
 }
