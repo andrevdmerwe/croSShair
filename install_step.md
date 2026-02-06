@@ -52,10 +52,14 @@ The built binary/bundle will be located in:
 - `src-tauri/target/release/crosshair` (Raw binary)
 
 ### 3. Install
-Run the binary directly or copy it to your path:
+Run the helper script to install the binary, icon, and desktop entry automatically:
 ```bash
-cp src-tauri/target/release/crosshair ~/.local/bin/
+./scripts/install.sh
 ```
+Or manually:
+1. Copy binary to `~/.local/bin/`.
+2. Copy icon to `~/.local/share/icons/hicolor/128x128/apps/crosshair.png`.
+3. Create `~/.local/share/applications/crosshair.desktop`.
 
 ## Global Hotkey Configuration
 
