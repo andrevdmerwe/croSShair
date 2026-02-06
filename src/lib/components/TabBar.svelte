@@ -1,14 +1,63 @@
 <script lang="ts">
   import { tabStore } from "../stores/tabs.svelte";
+  import { ask } from "@tauri-apps/plugin-dialog";
+
+  let { onSaveTab } = $props<{
+    onSaveTab?: (tabId: string) => Promise<void>;
+  }>();
 
   function selectTab(id: string) {
     tabStore.activeTabId = id;
   }
 
-  function closeTab(e: MouseEvent, id: string) {
+  async function closeTab(e: MouseEvent, id: string) {
     e.stopPropagation();
-    // In real implementation we'll check for dirty state here
+    const tab = tabStore.getTab(id);
+
+    if (tab?.isDirty) {
+      const shouldSave = await ask(
+        `"${tab.label}" has unsaved changes. Save before closing?`,
+        {
+          title: "Unsaved Changes",
+          kind: "warning",
+          okLabel: "Save",
+          cancelLabel: "Don't Save",
+        },
+      );
+
+      if (shouldSave && onSaveTab) {
+        await onSaveTab(id);
+      }
+    }
+
     tabStore.removeTab(id);
+  }
+
+  async function closeAllTabs() {
+    // Check for any dirty tabs
+    const dirtyTabs = tabStore.tabs.filter((t) => t.isDirty);
+
+    if (dirtyTabs.length > 0) {
+      const shouldSave = await ask(
+        `${dirtyTabs.length} tab(s) have unsaved changes. Save all before closing?`,
+        {
+          title: "Unsaved Changes",
+          kind: "warning",
+          okLabel: "Save All",
+          cancelLabel: "Don't Save",
+        },
+      );
+
+      if (shouldSave && onSaveTab) {
+        for (const tab of dirtyTabs) {
+          await onSaveTab(tab.id);
+        }
+      }
+    }
+
+    // Close all tabs
+    const tabIds = tabStore.tabs.map((t) => t.id);
+    tabIds.forEach((id) => tabStore.removeTab(id));
   }
 </script>
 
@@ -32,6 +81,11 @@
       </span>
     </button>
   {/each}
+  {#if tabStore.tabs.length > 1}
+    <button class="close-all-btn" onclick={closeAllTabs} title="Close all tabs">
+      ✕ All
+    </button>
+  {/if}
 </div>
 
 <style>
@@ -110,5 +164,28 @@
   .close-btn:hover {
     background: var(--bg-glass);
     color: var(--accent);
+  }
+
+  .close-all-btn {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    margin-left: auto;
+    background: var(--bg-glass);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-muted);
+    transition: all 0.2s;
+    -webkit-app-region: no-drag;
+    height: 28px;
+    margin-bottom: 4px;
+  }
+
+  .close-all-btn:hover {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
   }
 </style>

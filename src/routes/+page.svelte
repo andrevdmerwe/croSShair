@@ -57,17 +57,44 @@
     if (!tab) return;
 
     try {
-      // Direct overwrite if we have a path
-      const filePath = tab.originalImagePath;
-      if (!filePath) {
+      const originalPath = tab.originalImagePath;
+      if (!originalPath) {
         // Fallback to Save As if no path
         await handleSaveAs();
         return;
       }
 
+      // Create annotated file path: original_annotated.png
+      // If already has _annotated suffix, use as-is
+      let annotatedPath: string;
+      if (originalPath.includes("_annotated.")) {
+        annotatedPath = originalPath;
+      } else {
+        // Insert _annotated before the extension
+        const lastDot = originalPath.lastIndexOf(".");
+        if (lastDot > 0) {
+          annotatedPath =
+            originalPath.substring(0, lastDot) +
+            "_annotated" +
+            originalPath.substring(lastDot);
+        } else {
+          annotatedPath = originalPath + "_annotated.png";
+        }
+      }
+
       const base64 = await currentCanvas.exportImage();
-      await invoke("save_image", { base64Data: base64, filePath });
-      toastStore.add("success", "Image saved");
+      await invoke("save_image", {
+        base64Data: base64,
+        filePath: annotatedPath,
+      });
+
+      // Update tab to track the annotated path for subsequent saves
+      tabStore.updateTab(tab.id, {
+        imagePath: annotatedPath,
+        label: annotatedPath.split("/").pop() || "Annotated Image",
+      });
+
+      toastStore.add("success", "Image saved as annotated version");
     } catch (e) {
       console.error("Save failed:", e);
       toastStore.add("error", `Failed to save: ${e}`);
@@ -146,6 +173,68 @@
     }
   }
 
+  // Save a specific tab by ID (used by TabBar for unsaved changes prompts)
+  async function handleSaveTab(tabId: string) {
+    const tab = tabStore.getTab(tabId);
+    if (!tab) return;
+
+    try {
+      const originalPath = tab.originalImagePath;
+      if (!originalPath) {
+        // Can't auto-save without a path
+        toastStore.add("info", "Cannot auto-save: no file path available");
+        return;
+      }
+
+      // Create annotated file path
+      let annotatedPath: string;
+      if (originalPath.includes("_annotated.")) {
+        annotatedPath = originalPath;
+      } else {
+        const lastDot = originalPath.lastIndexOf(".");
+        if (lastDot > 0) {
+          annotatedPath =
+            originalPath.substring(0, lastDot) +
+            "_annotated" +
+            originalPath.substring(lastDot);
+        } else {
+          annotatedPath = originalPath + "_annotated.png";
+        }
+      }
+
+      // We need to temporarily switch to this tab to export its canvas
+      const previousActiveTabId = tabStore.activeTabId;
+      tabStore.activeTabId = tabId;
+
+      // Wait a tick for the canvas to mount
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      if (currentCanvas) {
+        const base64 = await currentCanvas.exportImage();
+        await invoke("save_image", {
+          base64Data: base64,
+          filePath: annotatedPath,
+        });
+
+        tabStore.updateTab(tabId, {
+          imagePath: annotatedPath,
+          label: annotatedPath.split("/").pop() || "Annotated Image",
+          isDirty: false,
+        });
+
+        toastStore.add("success", `Saved: ${annotatedPath.split("/").pop()}`);
+      }
+
+      // Restore previous active tab if it still exists
+      if (previousActiveTabId && tabStore.getTab(previousActiveTabId)) {
+        tabStore.activeTabId = previousActiveTabId;
+      }
+    } catch (e) {
+      console.error("Save tab failed:", e);
+      toastStore.add("error", `Failed to save: ${e}`);
+    }
+  }
+
   onMount(() => {
     // Listen for CLI-triggered captures
     const unlisten = listen("capture-region-request", () => {
@@ -174,7 +263,7 @@
 
 <main class="app-container">
   <div class="header">
-    <TabBar />
+    <TabBar onSaveTab={handleSaveTab} />
   </div>
 
   <div class="content-area">
