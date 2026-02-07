@@ -128,16 +128,30 @@ function hitTestSpeechBubble(ann: Annotation, x: number, y: number): boolean {
     const ny = h < 0 ? ann.y + h : ann.y;
     const nw = Math.abs(w);
     const nh = Math.abs(h);
-    const centerX = nx + nw / 2;
-    const bubbleBottom = ny + nh;
-    const pointerBaseHalf = Math.max(6, nw * 0.06);
+    const radiusX = nw / 2;
+    const radiusY = nh / 2;
+    const centerX = nx + radiusX;
+    const centerY = ny + radiusY;
 
-    return pointInTriangle(
-        x, y,
-        centerX - pointerBaseHalf, bubbleBottom,
-        centerX + pointerBaseHalf, bubbleBottom,
-        ptrX, ptrY,
+    if (radiusX <= 0 || radiusY <= 0) return false;
+
+    // Pointer base width matches rendering (reads from data)
+    const pointerBaseHalf = Math.max(4, (ann.data?.pointerWidth ?? 12) / 2);
+
+    // Calculate base points on ellipse at the angle facing the pointer tip
+    const pAngle = Math.atan2(ptrY - centerY, ptrX - centerX);
+    const speed = Math.sqrt(
+        radiusX * radiusX * Math.sin(pAngle) * Math.sin(pAngle) +
+        radiusY * radiusY * Math.cos(pAngle) * Math.cos(pAngle),
     );
+    const gapHalf = Math.min(Math.PI / 4, pointerBaseHalf / speed);
+
+    const base1X = centerX + radiusX * Math.cos(pAngle - gapHalf);
+    const base1Y = centerY + radiusY * Math.sin(pAngle - gapHalf);
+    const base2X = centerX + radiusX * Math.cos(pAngle + gapHalf);
+    const base2Y = centerY + radiusY * Math.sin(pAngle + gapHalf);
+
+    return pointInTriangle(x, y, base1X, base1Y, base2X, base2Y, ptrX, ptrY);
 }
 
 function pointInTriangle(

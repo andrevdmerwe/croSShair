@@ -334,45 +334,64 @@
                     const centerX = nx + radiusX;
                     const centerY = ny + radiusY;
 
-                    // Pointer properties
+                    const pointerX = ann.data?.pointerX ?? centerX;
+                    const pointerY =
+                        ann.data?.pointerY ?? (centerY + radiusY + 30);
+
                     const hasPointer =
                         ann.data?.pointerX !== undefined &&
                         ann.data?.pointerY !== undefined &&
                         radiusX > 0 &&
                         radiusY > 0;
-                    const pointerBaseHalf = hasPointer
-                        ? Math.max(6, nw * 0.06)
-                        : 0;
-                    const pointerX = ann.data?.pointerX ?? centerX;
-                    const pointerY =
-                        ann.data?.pointerY ?? (centerY + radiusY + 30);
 
-                    // Single unified path: ellipse arc + integrated pointer
+                    // Pointer base width from data (independent of strokeWidth)
+                    const pointerBaseHalf = hasPointer
+                        ? Math.max(4, (ann.data?.pointerWidth ?? 12) / 2)
+                        : 0;
+
+                    // Check if pointer tip is outside the ellipse
+                    const ellipseTest = hasPointer
+                        ? ((pointerX - centerX) / radiusX) ** 2 +
+                          ((pointerY - centerY) / radiusY) ** 2
+                        : 0;
+                    const pointerOutside = ellipseTest > 1.1;
+
                     if (radiusX > 0 && radiusY > 0) {
                         ctx.beginPath();
 
-                        if (hasPointer && pointerBaseHalf < radiusX) {
-                            // Calculate angles where pointer base meets the ellipse
-                            const angleRight = Math.acos(
-                                pointerBaseHalf / radiusX,
+                        if (hasPointer && pointerOutside && pointerBaseHalf > 0) {
+                            // Angle from center to pointer tip — pointer attaches at this edge
+                            const pAngle = Math.atan2(
+                                pointerY - centerY,
+                                pointerX - centerX,
                             );
-                            const angleLeft = Math.PI - angleRight;
 
-                            // Draw ellipse arc from left base, clockwise around
-                            // the top, to right base (skipping the bottom segment)
+                            // Gap half-angle from base width and ellipse curvature at that angle
+                            const speed = Math.sqrt(
+                                radiusX * radiusX * Math.sin(pAngle) * Math.sin(pAngle) +
+                                radiusY * radiusY * Math.cos(pAngle) * Math.cos(pAngle),
+                            );
+                            const gapHalf = Math.min(
+                                Math.PI / 4,
+                                pointerBaseHalf / speed,
+                            );
+
+                            const gapStart = pAngle - gapHalf;
+                            const gapEnd = pAngle + gapHalf;
+
+                            // Arc the long way around, skipping the gap
                             ctx.ellipse(
                                 centerX, centerY,
                                 radiusX, radiusY,
                                 0,
-                                angleLeft, angleRight,
+                                gapEnd, gapStart,
                                 false,
                             );
-                            // Line from right base to pointer tip
+                            // Line to pointer tip, close back to arc start
                             ctx.lineTo(pointerX, pointerY);
-                            // Close path back to left base
                             ctx.closePath();
                         } else {
-                            // No pointer or base too wide — simple ellipse
+                            // No pointer or pointer inside bubble — simple ellipse
                             ctx.ellipse(
                                 centerX, centerY,
                                 radiusX, radiusY,
@@ -387,7 +406,7 @@
                     // Text (contrasting color)
                     if (ann.data?.text) {
                         ctx.fillStyle = "#ffffff";
-                        const fontSize = 14 + ann.strokeWidth * 4;
+                        const fontSize = ann.data?.fontSize ?? 26;
                         const lineHeight = fontSize * 1.2;
                         ctx.font = `${fontSize}px sans-serif`;
                         ctx.textAlign = "center";
@@ -686,18 +705,26 @@
             );
             if (ann) {
                 // Sync Stroke Width
-                // Verify tool type matches to avoid setting "pen" width to "pixelate" density if switching tools (but we clear selection on tool switch anyway)
                 if (
                     ann.strokeWidth &&
                     toolStore.currentStrokeWidth !== ann.strokeWidth
                 ) {
-                    // Use untracked to avoid loop? Svelte 5 handling...
-                    // checking value to avoid infinite loop
                     toolStore.setStrokeWidth(ann.strokeWidth);
                 }
                 // Sync Color
                 if (ann.color && toolStore.currentColor !== ann.color) {
                     toolStore.setColor(ann.color);
+                }
+                // Sync speech bubble specific fields
+                if (ann.type === "speechBubble") {
+                    const pw = ann.data?.pointerWidth ?? 12;
+                    if (toolStore.currentPointerWidth !== pw) {
+                        toolStore.setPointerWidth(pw);
+                    }
+                    const fs = ann.data?.fontSize ?? 26;
+                    if (toolStore.currentFontSize !== fs) {
+                        toolStore.setFontSize(fs);
+                    }
                 }
             }
         }
@@ -1179,7 +1206,13 @@
                 // Click point = pointer tip, body follows drag
                 drawingAnnotation.width = 0;
                 drawingAnnotation.height = 0;
-                drawingAnnotation.data = { text: "", pointerX: x, pointerY: y };
+                drawingAnnotation.data = {
+                    text: "",
+                    pointerX: x,
+                    pointerY: y,
+                    pointerWidth: toolStore.currentPointerWidth,
+                    fontSize: toolStore.currentFontSize,
+                };
             } else if (toolStore.currentTool === "step") {
                 // Dynamic step counting: Max + 1
                 const existingSteps = tab.annotations
@@ -1239,7 +1272,9 @@
                 textInputWidth = ann.width ?? 0;
                 textInputHeight = ann.height ?? 0;
                 textInputColor = ann.color;
-                textInputFontSize = 14 + ann.strokeWidth * 4;
+                textInputFontSize = ann.type === "speechBubble"
+                    ? (ann.data?.fontSize ?? 26)
+                    : 14 + ann.strokeWidth * 4;
             }
         } else {
             // New text
@@ -1249,7 +1284,9 @@
             textInputWidth = 0; // Auto-size will handle it or min-width
             textInputHeight = 0;
             textInputColor = toolStore.currentColor;
-            textInputFontSize = 14 + toolStore.currentStrokeWidth * 4;
+            textInputFontSize = toolStore.currentTool === "speechBubble"
+                ? toolStore.currentFontSize
+                : 14 + toolStore.currentStrokeWidth * 4;
         }
 
         // Focus next tick
