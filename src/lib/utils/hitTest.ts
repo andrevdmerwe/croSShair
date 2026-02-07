@@ -11,9 +11,11 @@ export function hitTestAnnotation(ann: Annotation, x: number, y: number, scale: 
     switch (ann.type) {
         case 'rectangle':
         case 'highlight':
-        case 'speechBubble':
         case 'pixelate':
+        case 'crop':
             return hitTestRectangle(ann, x, y);
+        case 'speechBubble':
+            return hitTestSpeechBubble(ann, x, y);
         case 'ellipse':
             return hitTestEllipse(ann, x, y);
         case 'pen':
@@ -109,6 +111,58 @@ function hitTestStep(ann: Annotation, x: number, y: number): boolean {
 }
 
 /**
+ * Hit test for speech bubble (body rectangle + pointer triangle)
+ */
+function hitTestSpeechBubble(ann: Annotation, x: number, y: number): boolean {
+    // Check body ellipse first
+    if (hitTestEllipse(ann, x, y)) return true;
+
+    // Check pointer triangle area
+    const ptrX = ann.data?.pointerX;
+    const ptrY = ann.data?.pointerY;
+    if (ptrX === undefined || ptrY === undefined) return false;
+
+    const w = ann.width ?? 0;
+    const h = ann.height ?? 0;
+    const nx = w < 0 ? ann.x + w : ann.x;
+    const ny = h < 0 ? ann.y + h : ann.y;
+    const nw = Math.abs(w);
+    const nh = Math.abs(h);
+    const centerX = nx + nw / 2;
+    const bubbleBottom = ny + nh;
+    const pointerBaseHalf = Math.max(6, nw * 0.06);
+
+    return pointInTriangle(
+        x, y,
+        centerX - pointerBaseHalf, bubbleBottom,
+        centerX + pointerBaseHalf, bubbleBottom,
+        ptrX, ptrY,
+    );
+}
+
+function pointInTriangle(
+    px: number, py: number,
+    ax: number, ay: number,
+    bx: number, by: number,
+    cx: number, cy: number,
+): boolean {
+    const d1 = triangleSign(px, py, ax, ay, bx, by);
+    const d2 = triangleSign(px, py, bx, by, cx, cy);
+    const d3 = triangleSign(px, py, cx, cy, ax, ay);
+    const hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
+    const hasPos = d1 > 0 || d2 > 0 || d3 > 0;
+    return !(hasNeg && hasPos);
+}
+
+function triangleSign(
+    px: number, py: number,
+    x1: number, y1: number,
+    x2: number, y2: number,
+): number {
+    return (px - x2) * (y1 - y2) - (x1 - x2) * (py - y2);
+}
+
+/**
  * Calculate the minimum distance from a point (px, py) to a line segment (x1,y1)-(x2,y2)
  */
 function pointToSegmentDistance(
@@ -183,6 +237,18 @@ export function getAnnotationBounds(ann: Annotation): { x: number; y: number; wi
                 width: radius * 2,
                 height: radius * 2
             };
+        }
+        case 'speechBubble': {
+            // Return only the bubble body bounds — pointer is a separate handle
+            let bx = ann.x;
+            let by = ann.y;
+            let bw = ann.width ?? 0;
+            let bh = ann.height ?? 0;
+
+            if (bw < 0) { bx += bw; bw = Math.abs(bw); }
+            if (bh < 0) { by += bh; bh = Math.abs(bh); }
+
+            return { x: bx, y: by, width: bw, height: bh };
         }
         default: {
             let x = ann.x;

@@ -313,8 +313,6 @@
 
                     // Use selected color for fill, with darker stroke
                     ctx.fillStyle = ann.color;
-                    // Create a darker shade of the fill color for stroke
-                    // Parse hex color and darken it
                     const hex = ann.color.replace("#", "");
                     const r = Math.max(
                         0,
@@ -329,65 +327,65 @@
                         parseInt(hex.substring(4, 6), 16) - 60,
                     );
                     ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
-                    ctx.lineWidth = 1.5; // Thin border
+                    ctx.lineWidth = 1.5;
 
                     const radiusX = nw / 2;
                     const radiusY = nh / 2;
                     const centerX = nx + radiusX;
                     const centerY = ny + radiusY;
 
-                    // Calculate pointer properties
+                    // Pointer properties
                     const hasPointer =
                         ann.data?.pointerX !== undefined &&
                         ann.data?.pointerY !== undefined &&
                         radiusX > 0 &&
                         radiusY > 0;
-                    const pointerBaseWidth = hasPointer
-                        ? Math.max(8, nw * 0.12)
+                    const pointerBaseHalf = hasPointer
+                        ? Math.max(6, nw * 0.06)
                         : 0;
-                    const ellipseBottom = centerY + radiusY;
                     const pointerX = ann.data?.pointerX ?? centerX;
-                    const pointerY = ann.data?.pointerY ?? ellipseBottom + 30;
+                    const pointerY =
+                        ann.data?.pointerY ?? (centerY + radiusY + 30);
 
-                    // Step 1: Draw ellipse (fill and stroke)
+                    // Single unified path: ellipse arc + integrated pointer
                     if (radiusX > 0 && radiusY > 0) {
                         ctx.beginPath();
-                        ctx.ellipse(
-                            centerX,
-                            centerY,
-                            radiusX,
-                            radiusY,
-                            0,
-                            0,
-                            2 * Math.PI,
-                        );
+
+                        if (hasPointer && pointerBaseHalf < radiusX) {
+                            // Calculate angles where pointer base meets the ellipse
+                            const angleRight = Math.acos(
+                                pointerBaseHalf / radiusX,
+                            );
+                            const angleLeft = Math.PI - angleRight;
+
+                            // Draw ellipse arc from left base, clockwise around
+                            // the top, to right base (skipping the bottom segment)
+                            ctx.ellipse(
+                                centerX, centerY,
+                                radiusX, radiusY,
+                                0,
+                                angleLeft, angleRight,
+                                false,
+                            );
+                            // Line from right base to pointer tip
+                            ctx.lineTo(pointerX, pointerY);
+                            // Close path back to left base
+                            ctx.closePath();
+                        } else {
+                            // No pointer or base too wide — simple ellipse
+                            ctx.ellipse(
+                                centerX, centerY,
+                                radiusX, radiusY,
+                                0, 0, 2 * Math.PI,
+                            );
+                        }
+
                         ctx.fill();
-                        ctx.stroke();
-                    }
-
-                    // Step 2: Draw pointer fill (overpaints the ellipse stroke at connection)
-                    if (hasPointer) {
-                        ctx.beginPath();
-                        ctx.moveTo(centerX - pointerBaseWidth, ellipseBottom);
-                        ctx.lineTo(pointerX, pointerY);
-                        ctx.lineTo(centerX + pointerBaseWidth, ellipseBottom);
-                        ctx.closePath();
-                        ctx.fill(); // Fill only - this covers the ellipse stroke
-                    }
-
-                    // Step 3: Stroke only the two outer edges of the pointer (not the base)
-                    if (hasPointer) {
-                        ctx.beginPath();
-                        ctx.moveTo(centerX - pointerBaseWidth, ellipseBottom);
-                        ctx.lineTo(pointerX, pointerY);
-                        ctx.lineTo(centerX + pointerBaseWidth, ellipseBottom);
-                        // Don't closePath - we don't want to stroke the base
                         ctx.stroke();
                     }
 
                     // Text (contrasting color)
                     if (ann.data?.text) {
-                        // Use contrasting text color
                         ctx.fillStyle = "#ffffff";
                         const fontSize = 14 + ann.strokeWidth * 4;
                         const lineHeight = fontSize * 1.2;
@@ -397,7 +395,8 @@
 
                         const lines = ann.data.text.split("\n");
                         const startY =
-                            ny + nh / 2 - ((lines.length - 1) * lineHeight) / 2;
+                            ny + nh / 2 -
+                            ((lines.length - 1) * lineHeight) / 2;
 
                         lines.forEach((line: string, i: number) => {
                             ctx.fillText(
@@ -424,8 +423,215 @@
                     });
                 }
                 break;
+
+            case "crop":
+                // Crop rendering is handled separately in renderOverlay
+                // to ensure it draws on top of all other annotations
+                break;
         }
         ctx.restore();
+    }
+
+    function renderCropOverlay(ann: Annotation) {
+        if (!overlayCtx) return;
+        if (ann.width === undefined || ann.height === undefined) return;
+
+        const ctx = overlayCtx;
+        const cw = ctx.canvas.width;
+        const ch = ctx.canvas.height;
+
+        // Normalize coordinates
+        let cx = ann.width < 0 ? ann.x + ann.width : ann.x;
+        let cy = ann.height < 0 ? ann.y + ann.height : ann.y;
+        let cWidth = Math.abs(ann.width);
+        let cHeight = Math.abs(ann.height);
+
+        ctx.save();
+
+        // Draw dark overlay outside crop region using clipping
+        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+        // Top strip
+        ctx.fillRect(0, 0, cw, cy);
+        // Bottom strip
+        ctx.fillRect(0, cy + cHeight, cw, ch - cy - cHeight);
+        // Left strip
+        ctx.fillRect(0, cy, cx, cHeight);
+        // Right strip
+        ctx.fillRect(cx + cWidth, cy, cw - cx - cWidth, cHeight);
+
+        // Draw dashed border around crop region
+        ctx.strokeStyle = accentColor;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 4]);
+        ctx.strokeRect(cx, cy, cWidth, cHeight);
+
+        // Rule of thirds grid lines
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+
+        // Vertical thirds
+        const thirdW = cWidth / 3;
+        ctx.beginPath();
+        ctx.moveTo(cx + thirdW, cy);
+        ctx.lineTo(cx + thirdW, cy + cHeight);
+        ctx.moveTo(cx + thirdW * 2, cy);
+        ctx.lineTo(cx + thirdW * 2, cy + cHeight);
+        ctx.stroke();
+
+        // Horizontal thirds
+        const thirdH = cHeight / 3;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + thirdH);
+        ctx.lineTo(cx + cWidth, cy + thirdH);
+        ctx.moveTo(cx, cy + thirdH * 2);
+        ctx.lineTo(cx + cWidth, cy + thirdH * 2);
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    async function applyCrop() {
+        const crop = tab.annotations.find((a: Annotation) => a.type === 'crop');
+        if (!crop || crop.width === undefined || crop.height === undefined) return;
+
+        // Normalize crop coordinates
+        const cropX = crop.width < 0 ? crop.x + crop.width : crop.x;
+        const cropY = crop.height < 0 ? crop.y + crop.height : crop.y;
+        const cropW = Math.abs(crop.width);
+        const cropH = Math.abs(crop.height);
+
+        if (cropW < 1 || cropH < 1) return;
+
+        // 1. Create cropped image via offscreen canvas
+        const croppedCanvas = document.createElement('canvas');
+        croppedCanvas.width = cropW;
+        croppedCanvas.height = cropH;
+        const croppedCtx = croppedCanvas.getContext('2d');
+        if (!croppedCtx) return;
+
+        croppedCtx.drawImage(image, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+        // 2. Update image source
+        const croppedDataUrl = croppedCanvas.toDataURL('image/png');
+        await new Promise<void>((resolve) => {
+            image.onload = () => resolve();
+            image.src = croppedDataUrl;
+        });
+
+        // 3. Transform annotations
+        const transformed = tab.annotations
+            .filter((a: Annotation) => a.type !== 'crop')
+            .map((a: Annotation) => transformAnnotationForCrop(a, cropX, cropY, cropW, cropH))
+            .filter((a: Annotation | null): a is Annotation => a !== null);
+
+        // 4. Update tab with new annotations
+        tabStore.updateTab(tab.id, {
+            annotations: transformed,
+            isDirty: true,
+        });
+
+        // 5. Commit to history for undo support
+        tabStore.commitHistory(tab.id);
+
+        // 6. Clear selection and resize canvas
+        toolStore.clearSelection();
+        imageLoaded = true;
+        resizeCanvas();
+        renderBase();
+        renderOverlay();
+
+        toastStore.add('success', 'Crop applied');
+    }
+
+    function transformAnnotationForCrop(
+        ann: Annotation,
+        cropX: number,
+        cropY: number,
+        cropW: number,
+        cropH: number,
+    ): Annotation | null {
+        const t = JSON.parse(JSON.stringify(ann)) as Annotation;
+
+        switch (ann.type) {
+            case 'pen':
+            case 'highlighter': {
+                if (!t.data?.points) return null;
+                const points = t.data.points
+                    .map((p: { x: number; y: number }) => ({
+                        x: p.x - cropX,
+                        y: p.y - cropY,
+                    }))
+                    .filter(
+                        (p: { x: number; y: number }) =>
+                            p.x >= -t.strokeWidth && p.x <= cropW + t.strokeWidth &&
+                            p.y >= -t.strokeWidth && p.y <= cropH + t.strokeWidth,
+                    );
+                if (points.length === 0) return null;
+                t.data.points = points;
+                t.x = points[0].x;
+                t.y = points[0].y;
+                break;
+            }
+            case 'line':
+            case 'arrow': {
+                t.x -= cropX;
+                t.y -= cropY;
+                if (t.data?.endX !== undefined) t.data.endX -= cropX;
+                if (t.data?.endY !== undefined) t.data.endY -= cropY;
+                // Discard if both endpoints are outside
+                const startIn = t.x >= 0 && t.x <= cropW && t.y >= 0 && t.y <= cropH;
+                const endIn =
+                    (t.data?.endX ?? 0) >= 0 && (t.data?.endX ?? 0) <= cropW &&
+                    (t.data?.endY ?? 0) >= 0 && (t.data?.endY ?? 0) <= cropH;
+                if (!startIn && !endIn) return null;
+                break;
+            }
+            case 'step': {
+                t.x -= cropX;
+                t.y -= cropY;
+                if (t.data?.pointerX !== undefined) t.data.pointerX -= cropX;
+                if (t.data?.pointerY !== undefined) t.data.pointerY -= cropY;
+                // Discard if center is outside
+                if (t.x < -15 || t.x > cropW + 15 || t.y < -15 || t.y > cropH + 15) return null;
+                break;
+            }
+            case 'speechBubble': {
+                t.x -= cropX;
+                t.y -= cropY;
+                if (t.data?.pointerX !== undefined) t.data.pointerX -= cropX;
+                if (t.data?.pointerY !== undefined) t.data.pointerY -= cropY;
+                // Discard if body is fully outside
+                const w = Math.abs(t.width ?? 0);
+                const h = Math.abs(t.height ?? 0);
+                const bx = (t.width ?? 0) < 0 ? t.x + (t.width ?? 0) : t.x;
+                const by = (t.height ?? 0) < 0 ? t.y + (t.height ?? 0) : t.y;
+                if (bx + w < 0 || bx > cropW || by + h < 0 || by > cropH) return null;
+                break;
+            }
+            default: {
+                // rectangle, ellipse, highlight, pixelate, text
+                t.x -= cropX;
+                t.y -= cropY;
+                const w = Math.abs(t.width ?? 0);
+                const h = Math.abs(t.height ?? 0);
+                const nx = (t.width ?? 0) < 0 ? t.x + (t.width ?? 0) : t.x;
+                const ny = (t.height ?? 0) < 0 ? t.y + (t.height ?? 0) : t.y;
+                // Discard if fully outside crop bounds
+                if (nx + w < 0 || nx > cropW || ny + h < 0 || ny > cropH) return null;
+                break;
+            }
+        }
+
+        return t;
+    }
+
+    function cancelCrop() {
+        const crop = tab.annotations.find((a: Annotation) => a.type === 'crop');
+        if (crop) {
+            tabStore.removeAnnotation(tab.id, crop.id);
+            toolStore.clearSelection();
+        }
     }
 
     // This function is called by renderOverlay to draw annotations on the overlay canvas
@@ -496,6 +702,9 @@
             }
         }
     });
+    // Crop state
+    let cropAnnotation = $derived(tab.annotations.find((a: Annotation) => a.type === 'crop'));
+
     // Re-render when annotations or selection changes
     $effect(() => {
         if (imageLoaded && overlayCtx) {
@@ -588,12 +797,24 @@
         if (!overlayCtx) return;
         overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-        // Render all annotations
-        tab.annotations.forEach(renderAnnotation);
+        // Render all non-crop annotations first
+        tab.annotations
+            .filter((a: Annotation) => a.type !== "crop")
+            .forEach(renderAnnotation);
 
         // Render in-progress drawing
-        if (drawingAnnotation) {
+        if (drawingAnnotation && drawingAnnotation.type !== "crop") {
             renderAnnotation(drawingAnnotation);
+        }
+
+        // Render crop overlay last (on top of everything)
+        const cropAnn = tab.annotations.find((a: Annotation) => a.type === "crop");
+        if (cropAnn) {
+            renderCropOverlay(cropAnn);
+        }
+        // Render in-progress crop drawing
+        if (drawingAnnotation && drawingAnnotation.type === "crop") {
+            renderCropOverlay(drawingAnnotation);
         }
 
         // Render selection outline if an annotation is selected
@@ -918,6 +1139,14 @@
                 return;
             }
 
+            // Enforce single crop at a time
+            if (toolStore.currentTool === "crop") {
+                const existingCrop = tab.annotations.find((a: Annotation) => a.type === 'crop');
+                if (existingCrop) {
+                    tabStore.removeAnnotation(tab.id, existingCrop.id);
+                }
+            }
+
             isDrawing = true;
             dragStartX = x;
             dragStartY = y;
@@ -947,17 +1176,10 @@
             ) {
                 drawingAnnotation.data = { endX: x, endY: y };
             } else if (toolStore.currentTool === "speechBubble") {
-                // Initialize with default minimum size for visibility
-                const defaultWidth = 80;
-                const defaultHeight = 40;
-                drawingAnnotation.width = defaultWidth;
-                drawingAnnotation.height = defaultHeight;
-                // Initialize pointer below start point
-                drawingAnnotation.data = {
-                    pointerX: x + defaultWidth / 2,
-                    pointerY: y + defaultHeight + 30,
-                    text: "Text",
-                };
+                // Click point = pointer tip, body follows drag
+                drawingAnnotation.width = 0;
+                drawingAnnotation.height = 0;
+                drawingAnnotation.data = { text: "", pointerX: x, pointerY: y };
             } else if (toolStore.currentTool === "step") {
                 // Dynamic step counting: Max + 1
                 const existingSteps = tab.annotations
@@ -1184,10 +1406,32 @@
                 drawingAnnotation.type === "ellipse" ||
                 drawingAnnotation.type === "highlight" ||
                 drawingAnnotation.type === "pixelate" ||
+                drawingAnnotation.type === "crop" ||
                 drawingAnnotation.type === "speechBubble"
             ) {
-                drawingAnnotation.width = x - drawingAnnotation.x;
-                drawingAnnotation.height = y - drawingAnnotation.y;
+                if (drawingAnnotation.type === "speechBubble") {
+                    // Body centered at cursor, size grows with drag distance
+                    const pdx = x - dragStartX;
+                    const pdy = y - dragStartY;
+                    const dist = Math.sqrt(pdx * pdx + pdy * pdy);
+                    const bw = Math.max(80, dist * 0.7);
+                    const bh = Math.max(40, dist * 0.45);
+
+                    drawingAnnotation.x = x - bw / 2;
+                    drawingAnnotation.y = y - bh / 2;
+                    drawingAnnotation.width = bw;
+                    drawingAnnotation.height = bh;
+
+                    // Pointer tip locked at click point
+                    drawingAnnotation.data = {
+                        ...drawingAnnotation.data,
+                        pointerX: dragStartX,
+                        pointerY: dragStartY,
+                    };
+                } else {
+                    drawingAnnotation.width = x - drawingAnnotation.x;
+                    drawingAnnotation.height = y - drawingAnnotation.y;
+                }
             } else if (
                 drawingAnnotation.type === "line" ||
                 drawingAnnotation.type === "arrow"
@@ -1454,6 +1698,27 @@
 
     function handleMouseUp() {
         if (isDrawing && drawingAnnotation) {
+            // Enforce minimum size for speech bubble (click-without-drag)
+            if (drawingAnnotation.type === "speechBubble") {
+                const minW = 80;
+                const minH = 40;
+                const nw = Math.abs(drawingAnnotation.width ?? 0);
+                const nh = Math.abs(drawingAnnotation.height ?? 0);
+
+                if (nw < minW || nh < minH) {
+                    // Default body centered above click point
+                    drawingAnnotation.width = minW;
+                    drawingAnnotation.height = minH;
+                    drawingAnnotation.x = dragStartX - minW / 2;
+                    drawingAnnotation.y = dragStartY - minH - 25;
+                    drawingAnnotation.data = {
+                        ...drawingAnnotation.data,
+                        pointerX: dragStartX,
+                        pointerY: dragStartY,
+                    };
+                }
+            }
+
             // Finalize drawing
             // addAnnotation already pushes history
             const newAnn = $state.snapshot(drawingAnnotation);
@@ -1462,6 +1727,11 @@
             // Auto-start editing for speech bubble
             if (newAnn.type === "speechBubble") {
                 startTextEditing(newAnn.x, newAnn.y, newAnn.id);
+            }
+
+            // Auto-select crop so user sees handles and Apply button
+            if (newAnn.type === "crop") {
+                toolStore.selectAnnotation(newAnn.id);
             }
 
             drawingAnnotation = null;
@@ -1519,6 +1789,20 @@
             e.preventDefault();
             tabStore.redo(tab.id);
             return;
+        }
+
+        // Crop shortcuts
+        if (cropAnnotation) {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                applyCrop();
+                return;
+            }
+            if (e.key === "Escape") {
+                e.preventDefault();
+                cancelCrop();
+                return;
+            }
         }
 
         // Only handle delete if we have a selection
@@ -1615,6 +1899,16 @@
                 "
             ></textarea>
         {/if}
+        {#if cropAnnotation}
+            <div class="crop-controls">
+                <button class="crop-btn apply" onclick={applyCrop}>
+                    Apply Crop
+                </button>
+                <button class="crop-btn cancel" onclick={cancelCrop}>
+                    Cancel
+                </button>
+            </div>
+        {/if}
     </div>
 </div>
 
@@ -1656,5 +1950,46 @@
         left: 0;
         pointer-events: auto; /* Allow interactions */
         outline: none; /* Remove focus outline */
+    }
+
+    .crop-controls {
+        position: absolute;
+        bottom: -48px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 8px;
+        z-index: 200;
+        pointer-events: all;
+    }
+
+    .crop-btn {
+        padding: 8px 16px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+        background: var(--bg-glass);
+        backdrop-filter: blur(10px);
+        color: var(--text-main);
+        font-weight: 500;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s;
+        box-shadow: var(--shadow-md);
+        white-space: nowrap;
+    }
+
+    .crop-btn:hover {
+        background: var(--bg-secondary);
+        border-color: var(--accent);
+    }
+
+    .crop-btn.apply {
+        background: var(--accent);
+        color: var(--bg-primary);
+        border-color: var(--accent);
+    }
+
+    .crop-btn.apply:hover {
+        opacity: 0.9;
     }
 </style>

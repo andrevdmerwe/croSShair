@@ -19,6 +19,7 @@
         { id: "arrow", label: "Arrow", icon: "↗" },
         { id: "step", label: "Step Number", icon: "➊" },
         { id: "pixelate", label: "Pixelate", icon: "░" },
+        { id: "crop", label: "Crop", icon: "✂" },
     ];
 
     // Dynamic palette from settings
