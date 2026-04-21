@@ -663,10 +663,12 @@
     let scale = $state(1);
     let image = new Image();
     let imageLoaded = $state(false);
+    let loadedImagePath = $state('');
 
-    // Load image when tab changes
+    // Load image only when imagePath actually changes
     $effect(() => {
-        if (tab.imagePath) {
+        if (tab.imagePath && tab.imagePath !== loadedImagePath) {
+            loadedImagePath = tab.imagePath;
             loadImage(tab.imagePath);
         }
     });
