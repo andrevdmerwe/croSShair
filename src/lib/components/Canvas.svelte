@@ -660,7 +660,12 @@
         }
     }
 
+    const MIN_ZOOM = 0.1;
+    const MAX_ZOOM = 5.0;
+    const ZOOM_STEP = 1.25;
+
     let scale = $state(1);
+    let isFitToWindow = $state(true);
     let image = new Image();
     let imageLoaded = $state(false);
     let loadedImagePath = $state('');
@@ -781,9 +786,7 @@
         }
     }
 
-    function resizeCanvas() {
-        if (!canvasContainer || !imageLoaded) return;
-
+    function computeFitScale(): number {
         // Fit image to container with some padding
         const containerWidth = canvasContainer.clientWidth - 40;
         const containerHeight = canvasContainer.clientHeight - 40;
@@ -791,15 +794,18 @@
         const imgRatio = image.width / image.height;
         const containerRatio = containerWidth / containerHeight;
 
+        let fitScale: number;
         if (imgRatio > containerRatio) {
-            scale = containerWidth / image.width;
+            fitScale = containerWidth / image.width;
         } else {
-            scale = containerHeight / image.height;
+            fitScale = containerHeight / image.height;
         }
 
         // Limit scale to max 1 for initial view (don't upscale pixelated screenshots)
-        scale = Math.min(scale, 1);
+        return Math.min(fitScale, 1);
+    }
 
+    function applyCanvasDimensions() {
         const width = image.width * scale;
         const height = image.height * scale;
 
@@ -813,6 +819,64 @@
 
         renderBase();
         renderOverlay();
+    }
+
+    function resizeCanvas() {
+        if (!canvasContainer || !imageLoaded) return;
+
+        // Only re-fit automatically while the user hasn't manually zoomed;
+        // a manual zoom opts out of tracking the container size until reset.
+        if (isFitToWindow) {
+            scale = computeFitScale();
+        }
+
+        applyCanvasDimensions();
+    }
+
+    function setZoom(newScale: number) {
+        if (!imageLoaded) return;
+        scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, newScale));
+        isFitToWindow = false;
+        applyCanvasDimensions();
+    }
+
+    function zoomIn() {
+        setZoom(scale * ZOOM_STEP);
+    }
+
+    function zoomOut() {
+        setZoom(scale / ZOOM_STEP);
+    }
+
+    function resetZoomToFit() {
+        if (!canvasContainer || !imageLoaded) return;
+        isFitToWindow = true;
+        scale = computeFitScale();
+        applyCanvasDimensions();
+    }
+
+    function handleWheel(e: WheelEvent) {
+        if (!e.ctrlKey || !imageLoaded) return;
+        e.preventDefault();
+
+        const rectBefore = overlayCanvas.getBoundingClientRect();
+        const imgX = (e.clientX - rectBefore.left) / scale;
+        const imgY = (e.clientY - rectBefore.top) / scale;
+
+        const factor = Math.pow(1.0015, -e.deltaY);
+        const newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, scale * factor));
+        if (newScale === scale) return;
+
+        scale = newScale;
+        isFitToWindow = false;
+        applyCanvasDimensions();
+
+        // Keep the same image-space point stationary under the cursor
+        const rectAfter = overlayCanvas.getBoundingClientRect();
+        const deltaX = rectAfter.left + imgX * scale - e.clientX;
+        const deltaY = rectAfter.top + imgY * scale - e.clientY;
+        canvasContainer.scrollLeft += deltaX;
+        canvasContainer.scrollTop += deltaY;
     }
 
     function renderBase() {
@@ -1830,6 +1894,23 @@
             return;
         }
 
+        // Zoom shortcuts
+        if ((e.ctrlKey || e.metaKey) && (e.key === "+" || e.key === "=")) {
+            e.preventDefault();
+            zoomIn();
+            return;
+        }
+        if ((e.ctrlKey || e.metaKey) && (e.key === "-" || e.key === "_")) {
+            e.preventDefault();
+            zoomOut();
+            return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === "0") {
+            e.preventDefault();
+            resetZoomToFit();
+            return;
+        }
+
         // Crop shortcuts
         if (cropAnnotation) {
             if (e.key === "Enter") {
@@ -1883,7 +1964,8 @@
     });
 </script>
 
-<div class="canvas-container" bind:this={canvasContainer}>
+<div class="canvas-root">
+<div class="canvas-container" bind:this={canvasContainer} onwheel={handleWheel}>
     <div class="canvas-stack">
         <canvas bind:this={baseCanvas} class="layer base"></canvas>
         <canvas
@@ -1950,19 +2032,56 @@
         {/if}
     </div>
 </div>
+{#if imageLoaded}
+    <div class="zoom-controls">
+        <button
+            class="zoom-btn"
+            onclick={zoomOut}
+            disabled={scale <= MIN_ZOOM}
+            aria-label="Zoom out"
+        >
+            &minus;
+        </button>
+        <span class="zoom-level">{Math.round(scale * 100)}%</span>
+        <button
+            class="zoom-btn"
+            onclick={zoomIn}
+            disabled={scale >= MAX_ZOOM}
+            aria-label="Zoom in"
+        >
+            +
+        </button>
+        <button
+            class="zoom-btn zoom-reset"
+            onclick={resetZoomToFit}
+            aria-label="Reset zoom to fit"
+        >
+            Fit
+        </button>
+    </div>
+{/if}
+</div>
 
 <style>
+    .canvas-root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+    }
+
     .canvas-container {
         width: 100%;
         height: 100%;
         display: flex;
-        align-items: center;
-        justify-content: center;
         background: var(--bg-secondary); /* Dark background for canvas area */
         overflow: auto;
     }
 
     .canvas-stack {
+        /* margin: auto centers the stack like align-items/justify-content center
+           would, but (unlike those) still allows scrolling to every part of the
+           content once it overflows the container at higher zoom levels. */
+        margin: auto;
         position: relative;
         box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
         background-color: #fff;
@@ -2030,5 +2149,64 @@
 
     .crop-btn.apply:hover {
         opacity: 0.9;
+    }
+
+    .zoom-controls {
+        position: absolute;
+        bottom: 16px;
+        right: 16px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+        background: var(--bg-glass);
+        backdrop-filter: blur(10px);
+        box-shadow: var(--shadow-md);
+        z-index: 200;
+    }
+
+    .zoom-btn {
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--text-main);
+        font-size: 16px;
+        font-weight: 600;
+        line-height: 1;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .zoom-btn:hover:not(:disabled) {
+        background: var(--bg-secondary);
+        border-color: var(--accent);
+    }
+
+    .zoom-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+    }
+
+    .zoom-reset {
+        width: auto;
+        padding: 0 10px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .zoom-level {
+        min-width: 44px;
+        text-align: center;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-main);
+        user-select: none;
     }
 </style>
