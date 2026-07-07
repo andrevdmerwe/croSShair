@@ -4,6 +4,25 @@ Lightweight, fast screenshot and annotation tool for **Linux / Wayland**, built 
 
 Capture a region of your screen, annotate it in a tabbed editor, and copy or save the result — all in a couple of keystrokes.
 
+## Why croSShair?
+
+On Windows, [PicPick](https://picpick.app/) was part of my daily workflow, and when I
+moved to Linux (Niri on Wayland) I couldn't find anything that replaced it. Plenty of
+screenshot tools exist, but none of them matched the workflow I actually relied on:
+
+- **Capture in the background, without interruption** — take a screenshot and keep
+  working; the app collects it without stealing focus or forcing you to deal with it
+  immediately.
+- **Multiple captures in one tabbed app** — grab five screenshots in a row while
+  reproducing a bug or writing a guide, then annotate them all afterwards, each in
+  its own tab.
+- **Auto-saving** — every capture lands on disk with a timestamped name the moment
+  it's taken. Nothing is lost if you never get around to editing it.
+
+Most Linux tools invert this: they capture one image, pop up an editor, and make you
+finish with it before you can take the next shot. croSShair is my attempt at bringing
+the PicPick-style capture-now-annotate-later workflow to Wayland.
+
 <!-- TODO: add a real screenshot/demo GIF -->
 <!-- ![croSShair screenshot](docs/screenshot.png) -->
 
