@@ -29,8 +29,24 @@ the requirements, design, and testing. If you spot things a seasoned Rust or Sve
 developer would do differently, that's probably why — issues and pull requests are
 very welcome.
 
-<!-- TODO: add a real screenshot/demo GIF -->
-<!-- ![croSShair screenshot](docs/screenshot.png) -->
+![croSShair main editor — tabbed screenshots with text and rectangle annotations](docs/main-editor.png)
+
+<details>
+<summary><strong>More screenshots</strong></summary>
+
+Arrows and step-number markers:
+
+![Arrow and step-number annotations](docs/arrows-and-steps.png)
+
+Speech bubbles:
+
+![Speech bubble annotation](docs/speech-bubble.png)
+
+Settings — themes, defaults, toolbar palette, and save location:
+
+![Settings modal in the Light theme](docs/settings.png)
+
+</details>
 
 ## Features
 
