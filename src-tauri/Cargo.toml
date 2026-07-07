@@ -2,7 +2,7 @@
 name = "crosshair"
 version = "0.1.0"
 description = "Lightweight screenshot and annotation tool for Wayland"
-authors = ["Andre"]
+authors = ["Andre van der Merwe"]
 edition = "2021"
 license = "MIT"
 

@@ -1,77 +1,175 @@
 # croSShair
 
-Lightweight, high-performance screenshot and annotation tool for **CachyOS Linux** with **Niri** Wayland compositor.
+Lightweight, fast screenshot and annotation tool for **Linux / Wayland**, built with Tauri 2.0 and Svelte 5.
+
+Capture a region of your screen, annotate it in a tabbed editor, and copy or save the result — all in a couple of keystrokes.
+
+<!-- TODO: add a real screenshot/demo GIF -->
+<!-- ![croSShair screenshot](docs/screenshot.png) -->
 
 ## Features
 
 - 📸 Region screenshot capture using `grim` + `slurp`
-- 🏷️ Browser-style tabbed interface for multiple screenshots
-- ✏️ Annotation tools: freehand, highlighter, shapes, arrows, text, step markers
-- 🔢 Step numbering for tutorials and guides
-- 🔳 Pixelation/blur for sensitive information
-- ✂️ Crop and resize
-- 📋 Wayland clipboard integration via `wl-copy`
-- 💾 Auto-save with timestamp naming (`YYYYMMDD_HHMMSS.png`)
+- 🏷️ Browser-style tabbed interface for working with multiple screenshots
+- ✏️ Annotation tools: freehand pen, highlighter, highlight box, shapes (rectangle, ellipse), lines, arrows, text, speech bubbles
+- 🔢 Step-number markers for tutorials and guides
+- 🔳 Pixelation for redacting sensitive information
+- ✂️ Crop tool and image zoom
+- ↩️ Full undo/redo history
+- 📋 Wayland clipboard integration via `wl-copy` (copy the annotated result, not just the raw capture)
+- 💾 Save with timestamp naming (`YYYYMMDD_HHMMSS.png`), plus "Save As" and save-annotated-copy
+- 🎨 Six built-in themes: Catppuccin Mocha, Nord, Osaka Jade, Kanagawa, Tokyo Night, Light
+- 🖥️ System tray integration — capture from the tray, keep the app out of your way
+- ⚡ Single-instance CLI: bind `crosshair capture-region` to a hotkey in your compositor
 
-## Why Svelte?
+## Compositor Compatibility
 
-This project uses **Svelte** as the frontend framework for the following performance reasons:
+croSShair captures via `grim`, which requires a compositor implementing the **wlr-screencopy** protocol. This includes:
 
-| Framework | Bundle Size | Virtual DOM | Runtime Overhead |
-|-----------|-------------|-------------|------------------|
-| **Svelte** | ~2-5KB | ❌ None | Compile-time reactivity |
-| React | ~40KB | ✅ Yes | Runtime diffing |
-| Vue | ~30KB | ✅ Yes | Runtime reactivity |
+- Sway
+- Niri
+- Hyprland
+- river
+- Wayfire
+- most other wlroots-based compositors
 
-For a performance-focused, lightweight desktop app with canvas-heavy interactions, Svelte provides:
-- **Faster startup** – smaller bundle = quicker load
-- **Better canvas performance** – no VDOM reconciliation overhead
-- **Lower memory footprint** – critical for annotation editing
+GNOME (Mutter) and KDE Plasma (KWin) do **not** support wlr-screencopy, so capture will not work there out of the box. Support for the xdg-desktop-portal screenshot API is on the wish list — contributions welcome.
 
 ## Requirements
 
-### System Dependencies
-
-```bash
-# CachyOS / Arch Linux
-sudo pacman -S grim slurp wl-clipboard
-```
+### Runtime dependencies
 
 | Tool | Purpose |
 |------|---------|
 | `grim` | Wayland screenshot capture |
-| `slurp` | Region selection |
-| `wl-clipboard` | Clipboard integration (wl-copy, wl-paste) |
+| `slurp` | Interactive region selection |
+| `wl-clipboard` | Clipboard integration (`wl-copy`) |
+
+```bash
+# Arch / CachyOS
+sudo pacman -S grim slurp wl-clipboard
+
+# Fedora
+sudo dnf install grim slurp wl-clipboard
+
+# Debian / Ubuntu
+sudo apt install grim slurp wl-clipboard
+```
+
+### Build dependencies
+
+- [Rust](https://www.rust-lang.org/tools/install) (stable) and Cargo
+- [Node.js](https://nodejs.org/) and npm
+- Tauri system libraries:
+
+```bash
+# Arch / CachyOS
+sudo pacman -S --needed webkit2gtk base-devel curl wget openssl \
+    appmenu-gtk-module gtk3 libappindicator-gtk3 librsvg
+```
+
+For other distributions, see the [Tauri prerequisites guide](https://tauri.app/start/prerequisites/).
+
+## Installation
+
+Pre-built binaries are not distributed yet — build from source:
+
+```bash
+git clone https://github.com/andrevdmerwe/croSShair.git
+cd croSShair
+./scripts/install.sh
+```
+
+The install script builds the release binary and (optionally) installs:
+
+- the binary to `~/.local/bin/crosshair`
+- the icon to `~/.local/share/icons/hicolor/128x128/apps/crosshair.png`
+- a desktop entry to `~/.local/share/applications/crosshair.desktop`
+- an optional autostart entry (start minimized to tray on login)
+
+Make sure `~/.local/bin` is on your `PATH`.
+
+To update, `git pull` and re-run `./scripts/install.sh`.
+
+## Usage
+
+Launch **croSShair** from your app launcher, or capture directly:
+
+```bash
+crosshair capture-region
+```
+
+croSShair runs as a single instance — invoking `capture-region` while it is already running (e.g. minimized to the tray) triggers a new capture in the existing window.
+
+### Global hotkey
+
+Bind the capture command in your compositor:
+
+**Niri** (`~/.config/niri/config.kdl`):
+
+```kdl
+binds {
+    Print hotkey-overlay-title="Screen Capture Region" { spawn "crosshair" "capture-region"; }
+}
+```
+
+**Hyprland** (`~/.config/hypr/hyprland.conf`):
+
+```ini
+bind = , Print, exec, crosshair capture-region
+```
+
+**Sway** (`~/.config/sway/config`):
+
+```
+bindsym Print exec crosshair capture-region
+```
+
+## Configuration
+
+Settings are available in-app (gear icon) and persisted to `~/.config/croSShair/config.json` (respects `$XDG_CONFIG_HOME`):
+
+```json
+{
+  "screenshotDirectory": "/home/you/Pictures/Screenshots",
+  "copyAfterCapture": false,
+  "defaultColor": "#ff0000",
+  "defaultStrokeWidth": "medium"
+}
+```
+
+| Key | Description |
+|-----|-------------|
+| `screenshotDirectory` | Where captures are saved (default: `~/Pictures/Screenshots`) |
+| `copyAfterCapture` | Copy the capture to the clipboard immediately after taking it |
+| `defaultColor` | Default annotation color |
+| `defaultStrokeWidth` | `thin`, `medium`, or `thick` |
+
+Theme and tool preferences are stored per-user by the UI.
 
 ## Development
 
 ```bash
-# Install dependencies
-npm install
-
-# Start development server
-npm run tauri dev
-
-# Build for production
-npm run tauri build
+npm install          # install frontend dependencies
+npm run tauri dev    # run with hot reload
+npm run tauri build  # production build
+npm run check        # svelte-check / type checking
 ```
 
-## Niri Keybinding
+### Tech stack
 
-Add to your Niri configuration:
+- **Backend**: Rust + Tauri 2.0 (`src-tauri/`)
+- **Frontend**: Svelte 5 (runes) + TypeScript + Vite + SvelteKit (static adapter)
+- **Rendering**: dual `<canvas>` layers — base image + annotation overlay
 
-```kdl
-binds {
-    Mod+Shift+S { spawn "croSShair" "capture-region"; }
-}
-```
+## Contributing
 
-## Tech Stack
+Issues and pull requests are welcome. Particularly appreciated:
 
-- **Backend**: Rust + Tauri 2.0
-- **Frontend**: Svelte + TypeScript + Vite
-- **Target**: Linux x86_64 / Wayland / Niri
+- xdg-desktop-portal capture backend (GNOME/KDE support)
+- packaging (AUR, Flatpak, Nix)
+- new annotation tools and themes
 
 ## License
 
-MIT
+[MIT](LICENSE) © Andre van der Merwe

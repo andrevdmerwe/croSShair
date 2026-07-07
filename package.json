@@ -1,7 +1,11 @@
 {
   "name": "crosshair",
   "version": "0.1.0",
-  "description": "Lightweight screenshot and annotation tool for CachyOS Linux with Niri Wayland compositor",
+  "description": "Lightweight screenshot and annotation tool for Linux/Wayland",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/andrevdmerwe/croSShair.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite dev",
