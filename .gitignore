@@ -11,3 +11,6 @@ vite.config.ts.timestamp-*
 
 # Local agent settings
 .claude/settings.local.json
+
+# Private launch checklist
+/next_steps.md
