@@ -23,6 +23,12 @@ Most Linux tools invert this: they capture one image, pop up an editor, and make
 finish with it before you can take the next shot. croSShair is my attempt at bringing
 the PicPick-style capture-now-annotate-later workflow to Wayland.
 
+A note on how it was built: I'm not a full-time coder — software development isn't my
+day job. croSShair was built with heavy use of AI-assisted development, with me steering
+the requirements, design, and testing. If you spot things a seasoned Rust or Svelte
+developer would do differently, that's probably why — issues and pull requests are
+very welcome.
+
 <!-- TODO: add a real screenshot/demo GIF -->
 <!-- ![croSShair screenshot](docs/screenshot.png) -->
 
