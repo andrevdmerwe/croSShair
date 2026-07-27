@@ -93,7 +93,7 @@
     display: flex;
     background: var(--bg-secondary);
     padding: 4px 4px 0 4px; /* Slight adjust */
-    height: 40px;
+    height: 48px;
     align-items: flex-end;
     overflow-x: auto;
     border-bottom: 1px solid var(--border);
@@ -101,6 +101,25 @@
     width: 100%;
     /* Drag region */
     app-region: drag; /* Standard CSS property for some webviews */
+  }
+
+  /* Custom scrollbar: fixed thickness, reserved below the tabs instead of
+     overlaying them, and does not grow/hide on hover like the OS default. */
+  .tab-bar::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .tab-bar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .tab-bar::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+  }
+
+  .tab-bar::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
   }
 
   .tab {
