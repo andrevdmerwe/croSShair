@@ -11,7 +11,8 @@ export const DEFAULT_SETTINGS = {
         "#ff00ff", "#00ffff", "#000000", "#ffffff"
     ],
     storagePath: "",
-    lastSaveDirectory: ""
+    lastSaveDirectory: "",
+    lastOpenDirectory: ""
 };
 
 class SettingsStore {

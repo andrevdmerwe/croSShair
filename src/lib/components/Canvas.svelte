@@ -12,6 +12,8 @@
     let { tab } = $props<{ tab: TabData }>();
 
     let canvasContainer: HTMLDivElement;
+    let canvasRoot: HTMLDivElement | undefined = $state();
+    let zoomControlsEl: HTMLDivElement | undefined = $state();
     let baseCanvas: HTMLCanvasElement;
     let overlayCanvas: HTMLCanvasElement;
     let baseCtx: CanvasRenderingContext2D | null = null;
@@ -786,10 +788,27 @@
         }
     }
 
+    /**
+     * Usable space inside the scroll container, excluding its padding (the
+     * padding is the reserved clearance for the floating zoom controls).
+     */
+    function containerContentSize(): { width: number; height: number } {
+        const styles = getComputedStyle(canvasContainer);
+        const padX =
+            parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+        const padY =
+            parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+        return {
+            width: canvasContainer.clientWidth - padX,
+            height: canvasContainer.clientHeight - padY,
+        };
+    }
+
     function computeFitScale(): number {
         // Fit image to container with some padding
-        const containerWidth = canvasContainer.clientWidth - 40;
-        const containerHeight = canvasContainer.clientHeight - 40;
+        const content = containerContentSize();
+        const containerWidth = content.width - 40;
+        const containerHeight = content.height - 40;
 
         const imgRatio = image.width / image.height;
         const containerRatio = containerWidth / containerHeight;
@@ -832,6 +851,29 @@
 
         applyCanvasDimensions();
     }
+
+    /**
+     * Keep the bottom clearance in step with the real height of the floating
+     * zoom controls, so the scrollable image area always stops above them.
+     */
+    $effect(() => {
+        const root = canvasRoot;
+        const controls = zoomControlsEl;
+        if (!root || !controls) return;
+
+        const apply = () => {
+            root.style.setProperty(
+                "--zoom-controls-gutter",
+                `${controls.offsetHeight + 32}px`,
+            );
+            resizeCanvas();
+        };
+
+        apply();
+        const observer = new ResizeObserver(apply);
+        observer.observe(controls);
+        return () => observer.disconnect();
+    });
 
     function setZoom(newScale: number) {
         if (!imageLoaded) return;
@@ -1140,6 +1182,50 @@
         return null;
     }
 
+    // Pan state (hand tool / hold-Space / middle-drag scroll the viewport)
+    let isPanning = $state(false);
+    let isSpaceHeld = $state(false);
+    let panStartClientX = 0;
+    let panStartClientY = 0;
+    let panStartScrollLeft = 0;
+    let panStartScrollTop = 0;
+
+    /** True while a left-drag should pan instead of draw/select. */
+    let panArmed = $derived(toolStore.currentTool === "pan" || isSpaceHeld);
+
+    function beginPan(e: MouseEvent) {
+        if (!canvasContainer) return;
+        e.preventDefault();
+        isPanning = true;
+        panStartClientX = e.clientX;
+        panStartClientY = e.clientY;
+        panStartScrollLeft = canvasContainer.scrollLeft;
+        panStartScrollTop = canvasContainer.scrollTop;
+    }
+
+    function endPan() {
+        isPanning = false;
+    }
+
+    /**
+     * Mousedown on the scrolling viewport. Overlay-canvas events bubble here,
+     * so this is the single place panning starts: left-drag with the hand tool
+     * (or Space held), or a middle-drag with any tool.
+     */
+    function handleContainerMouseDown(e: MouseEvent) {
+        if (e.button === 1 || (e.button === 0 && panArmed)) {
+            beginPan(e);
+        }
+    }
+
+    function handlePanMove(e: MouseEvent) {
+        if (!isPanning || !canvasContainer) return;
+        canvasContainer.scrollLeft =
+            panStartScrollLeft - (e.clientX - panStartClientX);
+        canvasContainer.scrollTop =
+            panStartScrollTop - (e.clientY - panStartClientY);
+    }
+
     // Drag state
     let isDragging = $state(false);
     let potentialDrag = $state(false); // Track if mouse down on object but not yet dragged
@@ -1149,6 +1235,10 @@
     // ... (rest of imports/state)
 
     function handleMouseDown(e: MouseEvent) {
+        // Panning (hand tool, Space held, middle button) is handled by the
+        // container handler this event bubbles up to.
+        if (panArmed || e.button !== 0) return;
+
         const { x, y } = getCanvasCoords(e);
 
         // 1. Check for Resize Handle Hit (on selected object)
@@ -1452,6 +1542,11 @@
     }
 
     function handleMouseMove(e: MouseEvent) {
+        if (panArmed || isPanning) {
+            overlayCanvas.style.cursor = isPanning ? "grabbing" : "grab";
+            return;
+        }
+
         const { x, y } = getCanvasCoords(e);
 
         // Update cursor based on hover
@@ -1800,6 +1895,8 @@
     }
 
     function handleMouseUp() {
+        endPan();
+
         if (isDrawing && drawingAnnotation) {
             // Enforce minimum size for speech bubble (click-without-drag)
             if (drawingAnnotation.type === "speechBubble") {
@@ -1882,6 +1979,13 @@
         // Also check local state as backup
         if (isEditingText) return;
 
+        // Hold Space to pan with any tool active
+        if (e.code === "Space") {
+            e.preventDefault(); // Don't scroll or re-trigger a focused button
+            if (!e.repeat) isSpaceHeld = true;
+            return;
+        }
+
         // Global shortcuts (Undo/Redo)
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
             e.preventDefault();
@@ -1934,6 +2038,13 @@
         }
     }
 
+    function handleKeyUp(e: KeyboardEvent) {
+        if (e.code === "Space") {
+            isSpaceHeld = false;
+            endPan();
+        }
+    }
+
     function deleteSelectedAnnotation() {
         if (toolStore.selectedAnnotationId) {
             // removeAnnotation already pushes history
@@ -1952,20 +2063,34 @@
         // Add global mouseup/mouseleave listeners
         window.addEventListener("mouseup", handleMouseUp);
         window.addEventListener("mouseleave", handleMouseLeave);
+        // Panning tracks the pointer past the edges of the canvas
+        window.addEventListener("mousemove", handlePanMove);
         // Add global keydown for shortcuts (so it works even if canvas isn't focused)
         window.addEventListener("keydown", handleKeyDown);
+        window.addEventListener("keyup", handleKeyUp);
 
         return () => {
             observer.disconnect();
             window.removeEventListener("mouseup", handleMouseUp);
             window.removeEventListener("mouseleave", handleMouseLeave);
+            window.removeEventListener("mousemove", handlePanMove);
             window.removeEventListener("keydown", handleKeyDown);
+            window.removeEventListener("keyup", handleKeyUp);
         };
     });
 </script>
 
-<div class="canvas-root">
-<div class="canvas-container" bind:this={canvasContainer} onwheel={handleWheel}>
+<div class="canvas-root" bind:this={canvasRoot}>
+<div
+    class="canvas-container"
+    class:pan-armed={panArmed}
+    class:panning={isPanning}
+    bind:this={canvasContainer}
+    onwheel={handleWheel}
+    onmousedown={handleContainerMouseDown}
+    role="application"
+    aria-label="Image workspace"
+>
     <div class="canvas-stack">
         <canvas bind:this={baseCanvas} class="layer base"></canvas>
         <canvas
@@ -2033,7 +2158,7 @@
     </div>
 </div>
 {#if imageLoaded}
-    <div class="zoom-controls">
+    <div class="zoom-controls" bind:this={zoomControlsEl}>
         <button
             class="zoom-btn"
             onclick={zoomOut}
@@ -2067,14 +2192,31 @@
         position: relative;
         width: 100%;
         height: 100%;
+        display: flex;
+        flex-direction: column;
+        /* Clearance for the floating zoom controls. They are absolutely
+           positioned against this box, so they stay pinned to the bottom while
+           the scrolling canvas area above them stops short of them. */
+        padding-bottom: var(--zoom-controls-gutter);
+        box-sizing: border-box;
     }
 
     .canvas-container {
+        flex: 1;
+        min-height: 0;
         width: 100%;
-        height: 100%;
         display: flex;
         background: var(--bg-secondary); /* Dark background for canvas area */
         overflow: auto;
+    }
+
+    .canvas-container.pan-armed {
+        cursor: grab;
+    }
+
+    .canvas-container.panning,
+    .canvas-container.panning :global(*) {
+        cursor: grabbing;
     }
 
     .canvas-stack {

@@ -19,6 +19,17 @@
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
 
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /* Floating tool palette geometry. The palette is position:fixed, so it
+     reserves no layout width; the canvas viewport pads itself by
+     --palette-gutter to keep the image out from under it at any zoom. */
+  --palette-width: 106px; /* Full border box: 88px of controls + padding + border */
+  --palette-offset: 16px;
+  --palette-gutter: calc(var(--palette-width) + var(--palette-offset) * 2);
+
+  /* Clearance under the floating zoom controls (bottom-right of the canvas).
+     Canvas.svelte measures the controls and overrides this at runtime. */
+  --zoom-controls-gutter: 72px;
 }
 
 /* Theme Overrides */

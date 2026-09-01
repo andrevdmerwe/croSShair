@@ -19,6 +19,7 @@
         { id: "step", label: "Step Number", icon: "➊" },
         { id: "pixelate", label: "Pixelate", icon: "░" },
         { id: "crop", label: "Crop", icon: "✂" },
+        { id: "pan", label: "Pan (hold Space or middle-drag)", icon: "✋" },
     ];
 
     // Dynamic palette from settings
@@ -35,8 +36,9 @@
             )?.type === "speechBubble")
     );
 
-    let { onCapture, onSave, onSaveAs, onCopy } = $props<{
+    let { onCapture, onOpenImage, onSave, onSaveAs, onCopy } = $props<{
         onCapture?: () => void;
+        onOpenImage?: () => void;
         onSave?: () => void;
         onSaveAs?: () => void;
         onCopy?: () => void;
@@ -86,6 +88,13 @@
             title="New Screenshot"
         >
             <span class="icon">📷</span>
+        </button>
+        <button
+            class="tool-btn"
+            onclick={() => onOpenImage?.()}
+            title="Open Image..."
+        >
+            <span class="icon">📂</span>
         </button>
         <button
             class="tool-btn"
@@ -305,7 +314,8 @@
         border-radius: var(--radius-md);
         box-shadow: var(--shadow-lg);
         gap: 12px;
-        width: 88px;
+        width: var(--palette-width);
+        box-sizing: border-box; /* --palette-width is the reserved outer width */
         align-items: center;
         user-select: none;
         height: auto;
@@ -314,7 +324,7 @@
 
         /* Floating positioning */
         position: fixed;
-        left: 16px;
+        left: var(--palette-offset);
         top: 50%;
         transform: translateY(-50%);
         z-index: 100;

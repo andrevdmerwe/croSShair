@@ -109,8 +109,75 @@ fn read_image_base64(file_path: String) -> Result<String, String> {
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).map_err(|e| e.to_string())?;
 
+    let mime = detect_image_mime(&buffer, &path);
     let encoded = general_purpose::STANDARD.encode(&buffer);
-    Ok(format!("data:image/png;base64,{}", encoded))
+    Ok(format!("data:{};base64,{}", mime, encoded))
+}
+
+/// Pick the data-URL MIME type for an image. Magic bytes are authoritative;
+/// the file extension is only a fallback for formats we do not sniff.
+fn detect_image_mime(buffer: &[u8], path: &PathBuf) -> &'static str {
+    if buffer.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return "image/png";
+    }
+    if buffer.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return "image/jpeg";
+    }
+    if buffer.starts_with(b"GIF87a") || buffer.starts_with(b"GIF89a") {
+        return "image/gif";
+    }
+    if buffer.starts_with(b"BM") {
+        return "image/bmp";
+    }
+    if buffer.len() >= 12 && buffer.starts_with(b"RIFF") && &buffer[8..12] == b"WEBP" {
+        return "image/webp";
+    }
+
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("bmp") => "image/bmp",
+        Some("webp") => "image/webp",
+        _ => "image/png",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::detect_image_mime;
+    use std::path::PathBuf;
+
+    #[test]
+    fn sniffs_format_from_magic_bytes() {
+        let png = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        let jpeg = [0xFF, 0xD8, 0xFF, 0xE0];
+        let webp = b"RIFF\x24\x00\x00\x00WEBPVP8 ";
+        let path = PathBuf::from("shot.png");
+
+        assert_eq!(detect_image_mime(&png, &path), "image/png");
+        assert_eq!(detect_image_mime(&jpeg, &path), "image/jpeg");
+        assert_eq!(detect_image_mime(webp, &path), "image/webp");
+        assert_eq!(detect_image_mime(b"GIF89a", &path), "image/gif");
+        assert_eq!(detect_image_mime(b"BM\x00\x00", &path), "image/bmp");
+    }
+
+    #[test]
+    fn falls_back_to_the_extension_when_bytes_are_unknown() {
+        let unknown = [0x00, 0x01, 0x02, 0x03];
+        assert_eq!(
+            detect_image_mime(&unknown, &PathBuf::from("photo.JPG")),
+            "image/jpeg"
+        );
+        assert_eq!(
+            detect_image_mime(&unknown, &PathBuf::from("no-extension")),
+            "image/png"
+        );
+    }
 }
 
 use tauri::menu::{Menu, MenuItem};

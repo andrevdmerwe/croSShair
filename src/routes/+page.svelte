@@ -1,7 +1,7 @@
 <script lang="ts">
   import { listen } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
-  import { save } from "@tauri-apps/plugin-dialog";
+  import { open, save } from "@tauri-apps/plugin-dialog";
   import { onMount } from "svelte";
 
   import { tabStore } from "$lib/stores/tabs.svelte";
@@ -16,6 +16,47 @@
 
   let currentCanvas: Canvas | undefined = $state();
 
+  /** Image formats the open dialog accepts (all decodable by the webview). */
+  const OPEN_IMAGE_EXTENSIONS = [
+    "png",
+    "jpg",
+    "jpeg",
+    "webp",
+    "bmp",
+    "gif",
+  ];
+
+  /** Create and activate a tab for an image already on disk. */
+  function addImageTab(filePath: string, fallbackLabel: string) {
+    const newTab: TabData = {
+      id: crypto.randomUUID(),
+      label: filePath.split("/").pop() || fallbackLabel,
+      imagePath: filePath,
+      originalImagePath: filePath, // For "Overwrite original"
+      annotations: [],
+      history: [[]], // Initial empty history state
+      historyIndex: 0,
+      isDirty: false,
+      timestamp: Date.now(),
+      stepCounter: 1,
+    };
+
+    tabStore.addTab(newTab);
+  }
+
+  /**
+   * Destination path for an annotated save. The canvas always exports PNG, so
+   * the result is always .png regardless of the source format:
+   * photo.jpg -> photo_annotated.png
+   */
+  function annotatedPathFor(originalPath: string): string {
+    const lastDot = originalPath.lastIndexOf(".");
+    const lastSep = originalPath.lastIndexOf("/");
+    const hasExtension = lastDot > lastSep + 1;
+    const stem = hasExtension ? originalPath.substring(0, lastDot) : originalPath;
+    return stem.endsWith("_annotated") ? `${stem}.png` : `${stem}_annotated.png`;
+  }
+
   async function handleCapture() {
     try {
       // Invoke Rust capture command with optional storage path
@@ -25,21 +66,7 @@
       });
 
       if (result.success && result.filePath) {
-        // Create new tab
-        const newTab: TabData = {
-          id: crypto.randomUUID(),
-          label: result.filePath.split("/").pop() || "Screenshot",
-          imagePath: result.filePath,
-          originalImagePath: result.filePath, // For "Overwrite original"
-          annotations: [],
-          history: [[]], // Initial empty history state
-          historyIndex: 0,
-          isDirty: false,
-          timestamp: Date.now(),
-          stepCounter: 1,
-        };
-
-        tabStore.addTab(newTab);
+        addImageTab(result.filePath, "Screenshot");
         toastStore.add("success", "Screenshot captured successfully");
       } else if (result.cancelled) {
         toastStore.add("info", "Capture cancelled");
@@ -48,6 +75,37 @@
       }
     } catch (e) {
       toastStore.add("error", `Error accessing capture tool: ${e}`);
+    }
+  }
+
+  async function handleOpenImage() {
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "Images", extensions: OPEN_IMAGE_EXTENSIONS }],
+        defaultPath: settingsStore.settings.lastOpenDirectory || undefined,
+      });
+
+      if (typeof selected !== "string") return; // Cancelled
+
+      addImageTab(selected, "Image");
+
+      // Remember the directory for the next open
+      const separator = selected.includes("\\") ? "\\" : "/";
+      const lastIndex = selected.lastIndexOf(separator);
+      if (lastIndex !== -1) {
+        settingsStore.updateSetting(
+          "lastOpenDirectory",
+          selected.substring(0, lastIndex),
+        );
+        settingsStore.save();
+      }
+
+      toastStore.add("success", `Opened ${selected.split("/").pop()}`);
+    } catch (e) {
+      console.error("Open image failed:", e);
+      toastStore.add("error", `Failed to open image: ${e}`);
     }
   }
 
@@ -64,23 +122,7 @@
         return;
       }
 
-      // Create annotated file path: original_annotated.png
-      // If already has _annotated suffix, use as-is
-      let annotatedPath: string;
-      if (originalPath.includes("_annotated.")) {
-        annotatedPath = originalPath;
-      } else {
-        // Insert _annotated before the extension
-        const lastDot = originalPath.lastIndexOf(".");
-        if (lastDot > 0) {
-          annotatedPath =
-            originalPath.substring(0, lastDot) +
-            "_annotated" +
-            originalPath.substring(lastDot);
-        } else {
-          annotatedPath = originalPath + "_annotated.png";
-        }
-      }
+      const annotatedPath = annotatedPathFor(originalPath);
 
       const base64 = await currentCanvas.exportImage();
       await invoke("save_image", {
@@ -197,21 +239,7 @@
         return;
       }
 
-      // Create annotated file path
-      let annotatedPath: string;
-      if (originalPath.includes("_annotated.")) {
-        annotatedPath = originalPath;
-      } else {
-        const lastDot = originalPath.lastIndexOf(".");
-        if (lastDot > 0) {
-          annotatedPath =
-            originalPath.substring(0, lastDot) +
-            "_annotated" +
-            originalPath.substring(lastDot);
-        } else {
-          annotatedPath = originalPath + "_annotated.png";
-        }
-      }
+      const annotatedPath = annotatedPathFor(originalPath);
 
       // We need to temporarily switch to this tab to export its canvas
       const previousActiveTabId = tabStore.activeTabId;
@@ -281,6 +309,7 @@
     <div class="sidebar">
       <ToolPalette
         onCapture={handleCapture}
+        onOpenImage={handleOpenImage}
         onSave={handleSave}
         onSaveAs={handleSaveAs}
         onCopy={handleCopy}
@@ -340,5 +369,10 @@
     position: relative;
     overflow: hidden;
     display: flex; /* Ensure Canvas component fills space */
+    /* The tool palette floats (position: fixed) over this area, so reserve its
+       width here. Everything inside - including the zoomed canvas and its
+       scroll extent - stays clear of it. */
+    padding-left: var(--palette-gutter);
+    box-sizing: border-box;
   }
 </style>

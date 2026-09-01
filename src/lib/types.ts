@@ -37,7 +37,7 @@ export interface TabData {
     stepCounter: number;
 }
 
-export type Tool = AnnotationType | 'select';
+export type Tool = AnnotationType | 'select' | 'pan';
 
 export interface AppConfig {
     screenshotDirectory: string;
